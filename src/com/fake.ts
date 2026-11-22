@@ -9,6 +9,7 @@ import { join } from "node:path";
 import type { ComBridge } from "./bridge.ts";
 import { ComError, connectionLost, timeoutError } from "./errors.ts";
 import type {
+  AttachmentInfo,
   BusyInterval,
   ContactDetail,
   ContactSummary,
@@ -35,6 +36,8 @@ export interface FakeAttachment {
   filename: string;
   size: number;
   content?: Uint8Array;
+  content_id?: string;
+  mime_type?: string;
 }
 
 export interface FakeMail {
@@ -54,6 +57,7 @@ export interface FakeMail {
   is_read: boolean;
   importance: number;
   internet_message_id: string | null;
+  transport_headers?: string | null;
   attachments: FakeAttachment[];
   flagged?: boolean;
 }
@@ -182,6 +186,7 @@ export class FakeComBridge implements ComBridge {
       is_read: input.is_read ?? false,
       importance: input.importance ?? 1,
       internet_message_id: input.internet_message_id ?? `<${id}@example.com>`,
+      transport_headers: input.transport_headers ?? null,
       attachments: input.attachments ?? [],
       flagged: input.flagged ?? false,
     };
@@ -353,16 +358,29 @@ export class FakeComBridge implements ComBridge {
     const matching = [...this.state.mail.values()]
       .filter((m) => this.folderMatches(m.folder, args.folder))
       .filter((m) => (args.unread_only ? !m.is_read : true))
-      .filter((m) => (since === undefined ? true : new Date(m.received_at).getTime() >= since))
-      .sort((a, b) =>
-        args.sort_ascending
-          ? a.received_at.localeCompare(b.received_at)
-          : b.received_at.localeCompare(a.received_at),
-      );
-    const page = matching.slice(0, args.limit);
+      .filter((m) => (since === undefined ? true : new Date(m.received_at).getTime() >= since));
+    const cursor = args.cursor;
+    const seconds = (value: string): number => Math.floor(new Date(value).getTime() / 1000);
+    const afterCursor = cursor
+      ? matching.filter((m) => {
+          const cmp = seconds(m.received_at) - seconds(cursor.at);
+          if (args.sort_ascending) {
+            if (cmp < 0) return false;
+            return cmp > 0 || !cursor.ids.includes(m.entry_id);
+          }
+          if (cmp > 0) return false;
+          return cmp < 0 || !cursor.ids.includes(m.entry_id);
+        })
+      : matching;
+    const ordered = afterCursor.sort((a, b) =>
+      args.sort_ascending
+        ? a.received_at.localeCompare(b.received_at)
+        : b.received_at.localeCompare(a.received_at),
+    );
+    const page = ordered.slice(0, args.limit);
     return {
       items: page.map((m) => this.summary(m)),
-      truncated: matching.length > page.length,
+      truncated: ordered.length > page.length,
       folder: `\\\\${this.state.default_store}\\Inbox`,
       mailbox_used: this.state.default_store,
     };
@@ -392,7 +410,15 @@ export class FakeComBridge implements ComBridge {
     };
   }
 
-  async readMail(args: { entryId: string; maxBodyBytes: number; includeHtml: boolean }): Promise<MailDetail> {
+  async readMail(args: {
+    entryId: string;
+    maxBodyBytes: number;
+    includeHtml: boolean;
+    includeTransportHeaders?: boolean;
+    attachmentMode?: "metadata" | "base64";
+    maxAttachmentBytes?: number;
+    maxAttachmentTotalBytes?: number;
+  }): Promise<MailDetail> {
     await this.ready();
     const mail = this.locate(args.entryId);
     const encoder = new TextEncoder();
@@ -402,16 +428,46 @@ export class FakeComBridge implements ComBridge {
       body = new TextDecoder().decode(encoder.encode(body).slice(0, args.maxBodyBytes));
       bodyTruncated = true;
     }
+    const maxAttachmentBytes = args.maxAttachmentBytes ?? 2 * 1024 * 1024;
+    const maxAttachmentTotalBytes = args.maxAttachmentTotalBytes ?? 8 * 1024 * 1024;
+    let totalBytes = 0;
+    const attachments = mail.attachments.map((a, index) => {
+      const contentId = a.content_id ?? "";
+      const info: AttachmentInfo = {
+        index: index + 1,
+        filename: a.filename,
+        size: a.size,
+        content_id: contentId,
+        mime_type: a.mime_type ?? "",
+        is_inline: contentId !== "",
+      };
+      if (args.attachmentMode !== "base64") return info;
+      const bytes = a.content ?? encoder.encode("fixture attachment");
+      if (bytes.length > maxAttachmentBytes) {
+        info.data_base64 = "";
+        info.skipped_reason = "too_large";
+      } else if (totalBytes + bytes.length > maxAttachmentTotalBytes) {
+        info.data_base64 = "";
+        info.skipped_reason = "total_cap";
+      } else {
+        info.data_base64 = Buffer.from(bytes).toString("base64");
+        totalBytes += bytes.length;
+      }
+      return info;
+    });
     const out: MailDetail = {
       ...this.summary(mail),
       body,
       body_truncated: bodyTruncated,
       recipients: this.recipientsOf(mail),
-      attachments: mail.attachments.map((a, index) => ({ index: index + 1, filename: a.filename, size: a.size })),
+      attachments,
     };
     if (args.includeHtml) {
       out.html = mail.html ?? `<p>${mail.body}</p>`;
       out.html_truncated = false;
+    }
+    if (args.includeTransportHeaders) {
+      out.transport_headers = mail.transport_headers ?? "";
     }
     return out;
   }

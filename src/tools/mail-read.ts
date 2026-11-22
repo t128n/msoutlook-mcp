@@ -1,5 +1,6 @@
 import type { MailDetail, MailSummary } from "../com/types.ts";
 import { mailFilter, searchClause } from "../outlook/dasl.ts";
+import { cursorForPage, decodeListCursor, LIST_SORTS, type ListSort } from "../outlook/pagination.ts";
 import {
   arrayProp,
   boolean,
@@ -18,6 +19,10 @@ import { coverage, truncateUtf8 } from "./util.ts";
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 1000;
 const MAX_BODY = 50_000;
+const MAX_TRANSPORT_HEADERS = 64 * 1024;
+const DEFAULT_MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
+const MAX_ATTACHMENT_CAP = 64 * 1024 * 1024;
 
 function buildFilter(sinceIso: string | undefined, unreadOnly: boolean): string {
   try {
@@ -90,6 +95,11 @@ export function mailReadTools(ctx: ToolContext) {
           }),
           unread_only: booleanProp("only return unread items", { default: false }),
           since_iso: stringProp("only mail received at or after this ISO 8601 time"),
+          sort: stringProp("newest (default) or oldest first", {
+            enum: [...LIST_SORTS],
+            default: "newest",
+          }),
+          cursor: stringProp("opaque next_cursor from the previous page"),
           mailbox: stringProp("optional store DisplayName or SMTP address"),
         },
         [],
@@ -100,6 +110,20 @@ export function mailReadTools(ctx: ToolContext) {
         const limit = integer(args, "limit", DEFAULT_LIMIT, 1, MAX_LIMIT);
         const unreadOnly = boolean(args, "unread_only", false);
         const sinceIso = optionalString(args, "since_iso");
+        const requestedSort = oneOf(args, "sort", LIST_SORTS, "newest");
+        const sortArg = args["sort"];
+        const sortExplicit = sortArg !== undefined && sortArg !== null && sortArg !== "";
+        const rawCursor = optionalString(args, "cursor");
+        let sort: ListSort = requestedSort;
+        let cursor = null;
+        if (rawCursor) {
+          cursor = decodeListCursor(rawCursor);
+          if (!cursor) throw new ToolArgumentError("cursor is invalid or expired");
+          if (sortExplicit && cursor.sort !== requestedSort) {
+            throw new ToolArgumentError("cursor does not match sort");
+          }
+          sort = cursor.sort;
+        }
         const filter = buildFilter(sinceIso, unreadOnly);
         const result = await ctx.bridge.listMail({
           folder,
@@ -108,19 +132,31 @@ export function mailReadTools(ctx: ToolContext) {
           filter: filter || undefined,
           unread_only: unreadOnly,
           since_iso: sinceIso ?? null,
+          sort_ascending: sort === "oldest",
+          cursor: cursor ? { at: cursor.at, ids: cursor.ids } : null,
         });
-        return ok(
-          listPayload(result.items, {
-            folder,
-            mailbox,
-            limit,
-            unreadOnly,
-            sinceIso,
-            truncated: result.truncated,
-            folderPath: result.folder,
-            mailboxUsed: result.mailbox_used,
-          }),
-        );
+        const payload = listPayload(result.items, {
+          folder,
+          mailbox,
+          limit,
+          unreadOnly,
+          sinceIso,
+          truncated: result.truncated,
+          folderPath: result.folder,
+          mailboxUsed: result.mailbox_used,
+        });
+        payload.query = {
+          folder,
+          limit,
+          unread_only: unreadOnly,
+          since_iso: sinceIso ?? null,
+          sort,
+          cursor: rawCursor ?? null,
+          mailbox: mailbox ?? null,
+        };
+        const nextCursor = result.truncated ? cursorForPage(result.items, sort, cursor) : null;
+        if (nextCursor) payload.next_cursor = nextCursor;
+        return ok(payload);
       },
     ),
 
@@ -135,6 +171,22 @@ export function mailReadTools(ctx: ToolContext) {
             minimum: 0,
           }),
           include_html: booleanProp("include the HTML body (can be heavy)", { default: false }),
+          include_transport_headers: booleanProp(
+            "include the raw RFC 5322 transport header block (References, In-Reply-To, Received)",
+            { default: false },
+          ),
+          attachments: stringProp("attachment payload: metadata (default) or base64 bytes", {
+            enum: ["metadata", "base64"],
+            default: "metadata",
+          }),
+          max_attachment_bytes: numberProp(
+            "per-attachment byte cap in base64 mode (default 2097152)",
+            { default: DEFAULT_MAX_ATTACHMENT_BYTES, minimum: 1, maximum: MAX_ATTACHMENT_CAP },
+          ),
+          max_attachment_total_bytes: numberProp(
+            "total attachment byte cap for one response (default 8388608)",
+            { default: DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES, minimum: 1, maximum: MAX_ATTACHMENT_CAP },
+          ),
         },
         ["entry_id"],
       ),
@@ -142,7 +194,31 @@ export function mailReadTools(ctx: ToolContext) {
         const entryId = requireString(args, "entry_id");
         const maxBody = integer(args, "max_body_bytes", MAX_BODY, 0, 50_000_000);
         const includeHtml = boolean(args, "include_html", false);
-        const detail: MailDetail = await ctx.bridge.readMail({ entryId, maxBodyBytes: maxBody, includeHtml });
+        const includeTransportHeaders = boolean(args, "include_transport_headers", false);
+        const attachmentMode = oneOf(args, "attachments", ["metadata", "base64"] as const, "metadata");
+        const maxAttachmentBytes = integer(
+          args,
+          "max_attachment_bytes",
+          DEFAULT_MAX_ATTACHMENT_BYTES,
+          1,
+          MAX_ATTACHMENT_CAP,
+        );
+        const maxAttachmentTotalBytes = integer(
+          args,
+          "max_attachment_total_bytes",
+          DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES,
+          1,
+          MAX_ATTACHMENT_CAP,
+        );
+        const detail: MailDetail = await ctx.bridge.readMail({
+          entryId,
+          maxBodyBytes: maxBody,
+          includeHtml,
+          includeTransportHeaders,
+          attachmentMode,
+          maxAttachmentBytes,
+          maxAttachmentTotalBytes,
+        });
         const body = truncateUtf8(detail.body, maxBody);
         const out: Record<string, unknown> = {
           ...detail,
@@ -153,6 +229,11 @@ export function mailReadTools(ctx: ToolContext) {
           const html = truncateUtf8(detail.html, maxBody);
           out.html = html.text;
           out.html_truncated = detail.html_truncated || html.truncated;
+        }
+        if (includeTransportHeaders) {
+          const headers = truncateUtf8(detail.transport_headers ?? "", MAX_TRANSPORT_HEADERS);
+          out.transport_headers = headers.text;
+          out.transport_headers_truncated = headers.truncated;
         }
         return ok(out);
       },

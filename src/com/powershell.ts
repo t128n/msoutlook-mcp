@@ -263,6 +263,8 @@ export class PowerShellComBridge implements ComBridge {
       limit: args.limit,
       filter: args.filter ?? null,
       sortAscending: args.sort_ascending === true,
+      cursorAt: args.cursor?.at ?? null,
+      cursorIds: args.cursor?.ids ?? [],
     });
     return { ...result, items: array<MailSummary>(result.items) };
   }
@@ -279,11 +281,23 @@ export class PowerShellComBridge implements ComBridge {
     return { ...result, items: array<MailSummary>(result.items) };
   }
 
-  async readMail(args: { entryId: string; maxBodyBytes: number; includeHtml: boolean }): Promise<MailDetail> {
+  async readMail(args: {
+    entryId: string;
+    maxBodyBytes: number;
+    includeHtml: boolean;
+    includeTransportHeaders?: boolean;
+    attachmentMode?: "metadata" | "base64";
+    maxAttachmentBytes?: number;
+    maxAttachmentTotalBytes?: number;
+  }): Promise<MailDetail> {
     const result = await this.request<MailDetail>("readMail", {
       entryId: args.entryId,
       maxBodyBytes: args.maxBodyBytes,
       includeHtml: args.includeHtml,
+      includeTransportHeaders: args.includeTransportHeaders === true,
+      includeAttachmentBytes: args.attachmentMode === "base64",
+      maxAttachmentBytes: args.maxAttachmentBytes ?? null,
+      maxAttachmentTotalBytes: args.maxAttachmentTotalBytes ?? null,
     });
     return {
       ...result,

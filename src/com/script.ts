@@ -204,17 +204,71 @@ function Recipient-List($item) {
   return @($out)
 }
 
-function Attachment-List($item) {
+function Attachment-Data($attachment, [int64]$maxBytes) {
+  # Save to a private temp file so the bytes are exactly what download_attachment
+  # writes, including embedded messages that have no PR_ATTACH_DATA_BIN value.
+  $tmp = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'msoutlook-mcp-' + [Guid]::NewGuid().ToString('N') + '.bin')
+  try {
+    $attachment.SaveAsFile($tmp)
+    $length = [int64](New-Object IO.FileInfo($tmp)).Length
+    if ($length -gt $maxBytes) { return [ordered]@{ skipped_reason = 'too_large' } }
+    $bytes = [IO.File]::ReadAllBytes($tmp)
+    return [ordered]@{
+      data_base64 = [Convert]::ToBase64String($bytes)
+      bytes = $length
+    }
+  } catch {
+    return [ordered]@{ skipped_reason = 'unavailable' }
+  } finally {
+    try { if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force } } catch { }
+  }
+}
+
+function Attachment-List($item, [bool]$includeBytes = $false, [int64]$maxBytes = 2097152, [int64]$maxTotal = 8388608) {
   $out = New-Object System.Collections.ArrayList
+  $total = [int64]0
   try {
     $count = [int]$item.Attachments.Count
     for ($i = 1; $i -le $count; $i++) {
       $a = $item.Attachments.Item($i)
-      [void]$out.Add([ordered]@{
+      $size = $null
+      try { $size = [int64]$a.Size } catch { }
+      $contentId = ''
+      try { $contentId = [string](Get-Prop $a '0x3712001F') } catch { }
+      $mimeType = ''
+      try { $mimeType = [string](Get-Prop $a '0x370E001F') } catch { }
+      $entry = [ordered]@{
         index = $i
         filename = [string]$a.FileName
-        size = [int64]$a.Size
-      })
+        size = $size
+        content_id = $contentId
+        mime_type = $mimeType
+        is_inline = (-not [string]::IsNullOrWhiteSpace($contentId))
+      }
+      if ($includeBytes) {
+        if ($null -ne $size -and $size -gt $maxBytes) {
+          $entry['data_base64'] = ''
+          $entry['skipped_reason'] = 'too_large'
+        } elseif ($null -ne $size -and ($total + $size) -gt $maxTotal) {
+          $entry['data_base64'] = ''
+          $entry['skipped_reason'] = 'total_cap'
+        } else {
+          $read = Attachment-Data $a $maxBytes
+          if ($read.Contains('data_base64')) {
+            if (($total + [int64]$read['bytes']) -gt $maxTotal) {
+              $entry['data_base64'] = ''
+              $entry['skipped_reason'] = 'total_cap'
+            } else {
+              $entry['data_base64'] = [string]$read['data_base64']
+              $total = $total + [int64]$read['bytes']
+            }
+          } else {
+            $entry['data_base64'] = ''
+            $entry['skipped_reason'] = [string]$read['skipped_reason']
+          }
+        }
+      }
+      [void]$out.Add($entry)
     }
   } catch { }
   return @($out)
@@ -403,14 +457,45 @@ function Op-ListMail($req) {
   $items.Sort('[ReceivedTime]', (-not $ascending))
   $filter = [string]$req.filter
   if ($filter) { $items = $items.Restrict('@SQL=' + $filter) }
+  $cursorAt = $null
+  if ($null -ne $req.cursorAt -and [string]$req.cursorAt -ne '') {
+    try { $cursorAt = [DateTimeOffset]::Parse([string]$req.cursorAt).ToUniversalTime() } catch { $cursorAt = $null }
+  }
+  $cursorIds = @{}
+  try {
+    foreach ($cursorId in @($req.cursorIds)) {
+      if ($null -ne $cursorId -and [string]$cursorId -ne '') { $cursorIds[[string]$cursorId] = $true }
+    }
+  } catch { }
   $limit = 20
   if ($req.limit) { $limit = [int]$req.limit }
   $out = New-Object System.Collections.ArrayList
   $item = $items.GetFirst()
   while ($null -ne $item -and $out.Count -lt $limit) {
-    $class = 0
-    try { $class = [int]$item.Class } catch { }
-    if ($class -eq 43) { [void]$out.Add((Summary-Mail $item)) }
+    $skip = $false
+    if ($null -ne $cursorAt) {
+      $received = $null
+      try { $received = $item.ReceivedTime } catch { }
+      if ($null -ne $received) {
+        $at = $null
+        try { $at = [DateTimeOffset]$received } catch { }
+        if ($null -ne $at) {
+          $cmp = $at.ToUnixTimeSeconds().CompareTo($cursorAt.ToUnixTimeSeconds())
+          if ($ascending) { if ($cmp -lt 0) { $skip = $true } }
+          else { if ($cmp -gt 0) { $skip = $true } }
+          if ($cmp -eq 0) {
+            $entryId = ''
+            try { $entryId = [string]$item.EntryID } catch { }
+            if ($cursorIds.ContainsKey($entryId)) { $skip = $true }
+          }
+        }
+      }
+    }
+    if (-not $skip) {
+      $class = 0
+      try { $class = [int]$item.Class } catch { }
+      if ($class -eq 43) { [void]$out.Add((Summary-Mail $item)) }
+    }
     $item = $items.GetNext()
   }
   $truncated = $false
@@ -498,7 +583,18 @@ function Op-ReadMail($req) {
     $out['html_truncated'] = $htmlTruncated
   }
   $out['recipients'] = Recipient-List $item
-  $out['attachments'] = Attachment-List $item
+  $includeAttachmentBytes = $false
+  if ($req.includeAttachmentBytes) { $includeAttachmentBytes = $true }
+  $maxAttachmentBytes = [int64]2097152
+  if ($null -ne $req.maxAttachmentBytes) { $maxAttachmentBytes = [int64]$req.maxAttachmentBytes }
+  $maxAttachmentTotalBytes = [int64]8388608
+  if ($null -ne $req.maxAttachmentTotalBytes) { $maxAttachmentTotalBytes = [int64]$req.maxAttachmentTotalBytes }
+  $out['attachments'] = Attachment-List $item $includeAttachmentBytes $maxAttachmentBytes $maxAttachmentTotalBytes
+  if ($req.includeTransportHeaders) {
+    $headers = Get-Prop $item '0x007D001F'
+    if ($null -eq $headers) { $headers = '' }
+    $out['transport_headers'] = [string]$headers
+  }
   return $out
 }
 
