@@ -32,6 +32,9 @@ export interface ComBridge {
   /** Connects through GetActiveObject. With `launch` it may start Outlook (off by default). */
   ping(options?: { launch?: boolean; timeoutMs?: number }): Promise<PingResult>;
 
+  /** Drops every cached COM object. The next call reconnects from scratch. */
+  reset(): void;
+
   listFolders(args: { maxDepth: number; mailbox?: string | null }): Promise<FolderNode[]>;
 
   listMail(args: ListMailArgs): Promise<ListResult<MailSummary>>;

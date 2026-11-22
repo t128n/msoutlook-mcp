@@ -13,5 +13,7 @@ export {
   timeoutError,
 } from "./errors.ts";
 export { PowerShellComBridge } from "./powershell.ts";
+export { ResilientBridge } from "./resilient.ts";
+export type { ConnectionSnapshot, ConnectionState, ResilientBridgeOptions } from "./resilient.ts";
 export { FakeComBridge } from "./fake.ts";
 export { OUTLOOK_HELPER_SCRIPT } from "./script.ts";

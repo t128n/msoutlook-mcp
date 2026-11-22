@@ -66,6 +66,26 @@ never written into `config.json`.
 - `auto_launch_outlook` is off by default. The logon task already starts Outlook; letting the daemon launch it can surprise the user with a profile picker.
 - `start_outlook_at_logon` is what `setup` asks about and `uninstall` removes.
 
+## Outlook lifecycle
+
+`serve` probes Outlook through `GetActiveObject` at start and after a failure.
+It never starts Outlook unless `auto_launch_outlook` is true (default off).
+
+| State | What it means | What happens |
+|---|---|---|
+| `connected` | A recent COM call worked. | Tools run normally. |
+| `waiting_for_outlook` | Outlook is closed, starting, or not answering. | Tool calls fail fast with a retryable error. A probe retries after 2 s, 4 s, 8 s, 16 s, 32 s, then every 60 s. |
+| `error` | Not installed, access denied or another non-retryable failure. | No retry loop. `doctor` says what to fix; a later `checkNow` can recover. |
+
+A retryable loss drops every cached COM object (the helper process is replaced),
+so the next successful call talks to the new Outlook process, never to stale
+objects. The log records `outlook_disconnected`, `outlook_reconnect_scheduled`
+and `outlook_connected`, plus the state at start.
+
+`/health` exposes the state, the last successful call, the retry attempt count
+and the next retry time. A modal prompt looks like a timeout: the call fails,
+the helper is replaced, and the daemon keeps running.
+
 ## Task Scheduler
 
 Both tasks run only while the user is signed in, with the interactive token and
