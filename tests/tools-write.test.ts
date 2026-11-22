@@ -325,9 +325,9 @@ describe("guarded calendar writes", () => {
     expect(bridge.state.mail.get(draft.entry_id)!.folder).toBe("sent");
   });
 
-  test("the tool registry now has 21 tools", async () => {
+  test("the registry now has all 27 tools", async () => {
     const { tools } = setup();
-    expect(tools.list()).toHaveLength(21);
+    expect(tools.list()).toHaveLength(27);
     expect(tools.list().map((t) => t.name)).toContain("send_draft");
   });
 });

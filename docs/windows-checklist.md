@@ -66,6 +66,13 @@ normal, non-elevated session: COM automation does not cross elevation.
 - [ ] `create_event_draft` with attendees sends no invite until `send_event_invites(confirm=true)`.
 - [ ] `respond_meeting` records accept/tentative/decline; with `send_response=true` the organizer is notified only when sending is on.
 
+## Smoke test (#5)
+
+- [ ] `bun scripts/smoke.ts` passes read-only against the test mailbox.
+- [ ] `SMOKE_TO=... bun scripts/smoke.ts --writes` creates a draft and leaves it unsent.
+- [ ] `SMOKE_ALLOW_SEND=1 ... --writes --send` sends only when that flag is present.
+- [ ] `bun scripts/smoke.ts --rules` creates and deletes a disabled rule.
+
 ## Rules and contacts (#5 phase 3)
 
 - [ ] `list_rules` decodes a move-to-folder rule and a subject rule.

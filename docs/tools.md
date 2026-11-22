@@ -43,11 +43,30 @@ allowlist are read from disk at call time, so flipping them needs no restart.
 Every To, Cc and Bcc address is re-checked **at send time**, not only when the
 draft was created.
 
-## Phase 3 — rules and contacts (next)
+## Phase 3 — rules and contacts (available now)
 
-`list_rules`, `toggle_rule`, `create_rule`, `delete_rule`, `search_contacts`,
-`get_contact_details`. Contact search uses ADODB/LDAP inside the PowerShell
-helper, with `CreateRecipient` as the fallback.
+| Tool | Guardrail |
+|---|---|
+| `list_rules` | Read-only. |
+| `toggle_rule` | Needs `confirm=true`. |
+| `create_rule` | Needs `confirm=true`, at least one condition and one action. `forward_to` addresses are checked against the allowlist. |
+| `delete_rule` | Needs `confirm=true`. |
+| `search_contacts` | Read-only GAL search. |
+| `get_contact_details` | Read-only. |
+
+Contact search uses ADODB/LDAP **inside the PowerShell helper**, with
+`CreateRecipient` as the fallback when the host is not domain-joined. That is the
+TypeScript answer for ADODB/LDAP: no native dependency and no second bridge; the
+helper already owns COM. `CreateRecipient` stays as the fallback.
+
+`create_rule` checks `forward_to` (the only outgoing action) against the
+allowlist. It does not check `from_addresses` or `sent_to`, which are incoming
+filters, not recipients. The original checked all three; this is the documented
+difference.
+
+A rule with `forward_to` is a send path, so creating one and enabling an
+existing forward rule both need the send switch. With sending off, they are
+refused.
 
 ## Differences from the original
 

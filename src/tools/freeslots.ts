@@ -1,5 +1,6 @@
 /**
- * Free-slot search.
+ * Free-slot search. Ported from the free/busy logic in Astral0/outlook-com-mcp (MIT); see NOTICE.
+ *
  *
  * `find_freeslots` iterates the calendar and breaks early; it never uses
  * `Items.Restrict` together with `IncludeRecurrences` (that returns nothing).

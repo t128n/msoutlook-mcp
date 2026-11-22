@@ -50,9 +50,12 @@ export function fail(code: string, message?: string, detail?: Record<string, unk
 export function responseForError(e: unknown): ToolResponse {
   if (e instanceof ToolArgumentError) return fail("INVALID_ARGUMENT", e.message);
   if (e instanceof ComError) {
-    return fail("OUTLOOK_UNAVAILABLE", e.message, {
+    const detail = e.detail ?? "";
+    const known = /^([A-Z][A-Z0-9_]+):/.exec(detail)?.[1];
+    return fail(known ?? "OUTLOOK_UNAVAILABLE", e.message, {
       retryable: e.retryable,
       ...(e.code !== undefined ? { hresult: hresult(e.code) } : {}),
+      ...(known ? { detail } : {}),
     });
   }
   return fail("INTERNAL_ERROR", errorText(e));

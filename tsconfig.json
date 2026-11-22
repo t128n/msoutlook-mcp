@@ -14,5 +14,5 @@
     "noImplicitOverride": true,
     "types": ["bun"]
   },
-  "include": ["src", "tests", "packages"]
+  "include": ["src", "tests", "packages", "scripts"]
 }
