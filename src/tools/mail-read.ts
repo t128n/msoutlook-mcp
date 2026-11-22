@@ -40,6 +40,20 @@ function buildFilter(sinceIso: string | undefined, unreadOnly: boolean): string 
   }
 }
 
+function readCursor(
+  raw: string | undefined,
+  scope: string,
+  sort: ListSort,
+  sortExplicit: boolean,
+): ListCursorState | null {
+  if (!raw) return null;
+  const cursor = decodeListCursor(raw);
+  if (!cursor) throw new ToolArgumentError("cursor is invalid or expired");
+  if (sortExplicit && cursor.sort !== sort) throw new ToolArgumentError("cursor does not match sort");
+  if (cursor.scope !== scope) throw new ToolArgumentError("cursor does not match the query");
+  return cursor;
+}
+
 function listPayload(
   items: MailSummary[],
   options: {
@@ -127,24 +141,14 @@ export function mailReadTools(ctx: ToolContext) {
         const sortExplicit = sortArg !== undefined && sortArg !== null && sortArg !== "";
         const rawCursor = optionalString(args, "cursor");
         const scope = JSON.stringify({
+          kind: "list",
           folder,
           mailbox: mailbox ?? null,
           unread_only: unreadOnly,
           since_iso: sinceIso ?? null,
         });
-        let sort: ListSort = requestedSort;
-        let cursor: ListCursorState | null = null;
-        if (rawCursor) {
-          cursor = decodeListCursor(rawCursor);
-          if (!cursor) throw new ToolArgumentError("cursor is invalid or expired");
-          if (sortExplicit && cursor.sort !== requestedSort) {
-            throw new ToolArgumentError("cursor does not match sort");
-          }
-          if (cursor.scope !== scope) {
-            throw new ToolArgumentError("cursor does not match the query");
-          }
-          sort = cursor.sort;
-        }
+        const cursor = readCursor(rawCursor, scope, requestedSort, sortExplicit);
+        const sort: ListSort = cursor?.sort ?? requestedSort;
         const filter = buildFilter(sinceIso, unreadOnly);
         const result = await ctx.bridge.listMail({
           folder,
@@ -278,16 +282,8 @@ export function mailReadTools(ctx: ToolContext) {
         const scope = oneOf(args, "scope", ["subject_body", "subject", "sender", "all"] as const, "subject_body");
         const limit = integer(args, "limit", 50, 1, MAX_LIMIT);
         const rawCursor = optionalString(args, "cursor");
-        const cursorScope = JSON.stringify({ query, scope, folder, mailbox: mailbox ?? null });
-        let cursor: ListCursorState | null = null;
-        if (rawCursor) {
-          cursor = decodeListCursor(rawCursor);
-          if (!cursor) throw new ToolArgumentError("cursor is invalid or expired");
-          if (cursor.sort !== "newest") throw new ToolArgumentError("cursor does not match sort");
-          if (cursor.scope !== cursorScope) {
-            throw new ToolArgumentError("cursor does not match the query");
-          }
-        }
+        const cursorScope = JSON.stringify({ kind: "search", query, scope, folder, mailbox: mailbox ?? null });
+        const cursor = readCursor(rawCursor, cursorScope, "newest", true);
         const filter = searchClause(query, scope);
         const result = await ctx.bridge.searchMail({
           folder,

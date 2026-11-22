@@ -19,7 +19,7 @@
 import {
   DEFAULT_MAX_ATTACHMENT_BYTES,
   DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES,
-  MAX_TRANSPORT_HEADER_BYTES,
+  MAX_TRANSPORT_HEADER_CHARS,
 } from "./limits.ts";
 
 export const OUTLOOK_HELPER_SCRIPT = String.raw`
@@ -278,7 +278,7 @@ function Attachment-List($item, [bool]$includeBytes = $false, [int64]$maxBytes =
         }
       }
     } catch {
-      $entry['skipped_reason'] = 'unavailable'
+      if ($includeBytes) { $entry['skipped_reason'] = 'unavailable' }
     }
     [void]$out.Add($entry)
   }
@@ -618,8 +618,12 @@ function Op-ReadMail($req) {
     try { $headers = [string](Get-Prop $item '0x007D001F') } catch { }
     $headersTruncated = $false
     # Guard the helper/stdout path; the host enforces the exact UTF-8 byte cap.
-    if ($headers.Length -gt ${MAX_TRANSPORT_HEADER_BYTES}) {
-      $headers = $headers.Substring(0, ${MAX_TRANSPORT_HEADER_BYTES})
+    if ($headers.Length -gt ${MAX_TRANSPORT_HEADER_CHARS}) {
+      $cut = ${MAX_TRANSPORT_HEADER_CHARS}
+      $last = [int][char]$headers[$cut - 1]
+      # Do not split a surrogate pair at the cap.
+      if ($last -ge 0xD800 -and $last -le 0xDBFF) { $cut = $cut - 1 }
+      $headers = $headers.Substring(0, $cut)
       $headersTruncated = $true
     }
     $out['transport_headers'] = $headers

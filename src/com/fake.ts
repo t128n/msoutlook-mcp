@@ -8,7 +8,11 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ComBridge } from "./bridge.ts";
 import { ComError, connectionLost, timeoutError } from "./errors.ts";
-import { DEFAULT_MAX_ATTACHMENT_BYTES, DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES, MAX_TRANSPORT_HEADER_BYTES } from "./limits.ts";
+import {
+  DEFAULT_MAX_ATTACHMENT_BYTES,
+  DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES,
+  MAX_TRANSPORT_HEADER_CHARS,
+} from "./limits.ts";
 import type {
   AttachmentInfo,
   BusyInterval,
@@ -467,9 +471,12 @@ export class FakeComBridge implements ComBridge {
     }
     if (args.includeTransportHeaders) {
       const full = mail.transport_headers ?? "";
-      const truncated = full.length > MAX_TRANSPORT_HEADER_BYTES;
-      out.transport_headers = truncated ? full.slice(0, MAX_TRANSPORT_HEADER_BYTES) : full;
-      out.transport_headers_truncated = truncated;
+      let cut = full.length > MAX_TRANSPORT_HEADER_CHARS ? MAX_TRANSPORT_HEADER_CHARS : full.length;
+      // Do not split a surrogate pair at the cap.
+      const last = full.charCodeAt(cut - 1);
+      if (cut > 0 && last >= 0xd800 && last <= 0xdbff) cut -= 1;
+      out.transport_headers = full.slice(0, cut);
+      out.transport_headers_truncated = cut < full.length;
     }
     return out;
   }
