@@ -11,6 +11,23 @@ normal, non-elevated session: COM automation does not cross elevation.
 - [ ] Copy the exe alone to a clean Windows 10/11 machine with no Node and no Bun; `msoutlook-mcp.exe version` prints a version.
 - [ ] `msoutlook-mcp.exe doctor` runs without a Bun runtime.
 
+## CLI, daemon and tasks (#3)
+
+- [ ] `setup` writes `%LOCALAPPDATA%\msoutlook-mcp\config.json` and `token`; only the current user can read them (`icacls`).
+- [ ] `setup` chooses a free port and prints an MCP snippet with the right URL and token.
+- [ ] `serve` starts with Outlook closed and `/health` answers `waiting_for_outlook`.
+- [ ] A request to `/mcp` without the bearer token is `401`.
+- [ ] A request with `Origin: https://evil.example` is `403`.
+- [ ] A request with a foreign `Host` is `403`.
+- [ ] `install` copies the exe, registers `MSOutlook MCP`, starts it, and survives a sign-out/sign-in.
+- [ ] `uninstall` stops and removes both tasks; `schtasks /Query /TN "MSOutlook MCP"` says it does not exist.
+- [ ] `uninstall` keeps the config; `uninstall --purge` removes config, token, state and logs.
+- [ ] `doctor` prints one line per check, warns when Outlook is closed, and exits non-zero when a real check fails.
+- [ ] `<new>.exe upgrade` replaces the installed exe and restarts the task. Corrupt the new exe so its `version` self-check fails; the old exe is restored and the task starts again.
+- [ ] `upgrade` refuses a downgrade without `--force`.
+- [ ] No console window appears at log on (the task runs `wscript.exe` with `start-hidden.vbs`).
+- [ ] `msoutlook-mcp.exe version`, `doctor` and `setup` print normally when run from `cmd.exe` (the exe stays console-subsystem).
+
 ## COM bridge (#2)
 
 - [ ] `ping` connects through `GetActiveObject("Outlook.Application")`, returns `Version` and the default profile.

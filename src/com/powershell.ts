@@ -236,8 +236,8 @@ export class PowerShellComBridge implements ComBridge {
     return this.request<T>(op, params, this.options.heavyTimeoutMs ?? HEAVY_TIMEOUT);
   }
 
-  async ping(options: { launch?: boolean } = {}): Promise<PingResult> {
-    return this.request<PingResult>("ping", { launch: options.launch === true }, 60_000);
+  async ping(options: { launch?: boolean; timeoutMs?: number } = {}): Promise<PingResult> {
+    return this.request<PingResult>("ping", { launch: options.launch === true }, options.timeoutMs ?? 60_000);
   }
 
   async listFolders(args: { maxDepth: number; mailbox?: string | null }): Promise<FolderNode[]> {
