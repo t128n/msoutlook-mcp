@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Logger } from "../util/logger.ts";
+import type { ToolRegistry } from "../tools/registry.ts";
 import type { HealthMonitor } from "./health.ts";
 
 export const PROTOCOL_VERSION = "2026-07-28";
@@ -12,6 +13,7 @@ export interface McpServerOptions {
   health: HealthMonitor;
   version: string;
   logger: Logger;
+  tools?: ToolRegistry;
   hostname?: string;
 }
 
@@ -169,9 +171,27 @@ export function startMcpServer(options: McpServerOptions): McpServerHandle {
         case "ping":
           return json(result(id, {}));
         case "tools/list":
-          return json(result(id, { tools: [] }));
-        case "tools/call":
-          return json(error(id, -32601, "Method not found"), 200);
+          return json(result(id, { tools: options.tools?.list() ?? [] }));
+        case "tools/call": {
+          if (!options.tools) return json(error(id, -32601, "Method not found"), 200);
+          const name = typeof params.name === "string" ? params.name : "";
+          const toolArgs =
+            params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments)
+              ? (params.arguments as Record<string, unknown>)
+              : {};
+          if (!name) return json(error(id, -32602, "InvalidParams", { reason: "tool name is required" }), 200);
+          if (!options.tools.has(name)) {
+            return json(error(id, -32602, "InvalidParams", { reason: `unknown tool ${name}` }), 200);
+          }
+          const response = await options.tools.call(name, toolArgs);
+          const data = response.data;
+          const payload: Record<string, unknown> = {
+            content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          };
+          if (data && typeof data === "object" && !Array.isArray(data)) payload.structuredContent = data;
+          if (response.isError) payload.isError = true;
+          return json(result(id, payload));
+        }
         default:
           return json(error(id, -32601, "Method not found"), 200);
       }

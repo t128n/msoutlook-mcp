@@ -30,6 +30,13 @@ It is a port of [Astral0/outlook-com-mcp](https://github.com/Astral0/outlook-com
 
 Start Outlook, sign in, and minimize it. The daemon waits for Outlook and reconnects on its own.
 
+## Tools
+
+Phase 1 is available: read mail and calendar, `health_check`, `whoami`,
+`guardrails_status`, attachments and free/busy. The guarded writes follow, then
+rules and contacts. See [docs/tools.md](docs/tools.md) for the inventory,
+arguments and differences from the original.
+
 ## Safety
 
 - Sending is **off** by default. Every state-changing call creates a draft or needs `confirm=true`.
@@ -40,6 +47,7 @@ Start Outlook, sign in, and minimize it. The daemon waits for Outlook and reconn
 ## Documentation
 
 - [docs/cli.md](docs/cli.md): commands, files, config keys, Task Scheduler, endpoints.
+- [docs/tools.md](docs/tools.md): the 27 tools, phases and argument differences.
 - [docs/spike-com.md](docs/spike-com.md): why the PowerShell bridge, what was verified.
 - [docs/windows-checklist.md](docs/windows-checklist.md): the manual test list for a real Windows machine.
 
