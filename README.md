@@ -43,7 +43,7 @@ Download `msoutlook-mcp-x86_64-pc-windows-msvc.zip` from the
 
 ### First run
 
-1. Run `msoutlook-mcp setup`. It writes the config and token, asks for the recipient allowlist and the send switch, and prints an MCP client entry.
+1. Run `msoutlook-mcp setup`. It asks for the port (default **28471**), the recipient allowlist and the send switch, writes the config and token, and prints an MCP client entry. For scripts, pass the port with `--port <n>`; if it is busy, setup picks the next free port.
 2. Run `msoutlook-mcp install`. No admin rights; it copies the exe to `%LOCALAPPDATA%\msoutlook-mcp\bin` and registers a Task Scheduler logon task.
 3. Run `msoutlook-mcp doctor` if anything does not work. Every line says what to fix.
 
@@ -64,9 +64,10 @@ Paste this into OpenCode (or another coding agent) on the Windows machine:
 >    allow sending (default **no**), and whether to start Outlook minimized at
 >    log on (recommended **yes**). Do not enable sending unless I explicitly
 >    say yes.
-> 3. Run `msoutlook-mcp setup --non-interactive --allow "<list>"` with
->    `--allow-send` only if I agreed, and `--outlook-logon` or
->    `--no-outlook-logon` per my answer. Then run `msoutlook-mcp install` and
+> 3. Run `msoutlook-mcp setup --non-interactive --port 28471 --allow "<list>"`
+>    with `--allow-send` only if I agreed, and `--outlook-logon` or
+>    `--no-outlook-logon` per my answer. If 28471 is busy, setup picks the next
+>    free port and prints it. Then run `msoutlook-mcp install` and
 >    `msoutlook-mcp doctor`.
 > 4. Add a remote MCP server named `outlook` to my global OpenCode config using
 >    the V2 `mcp.servers` shape: URL `http://127.0.0.1:28471/mcp`,
