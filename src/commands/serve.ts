@@ -1,4 +1,5 @@
 import { errorText } from "../com/errors.ts";
+import { ResilientBridge } from "../com/resilient.ts";
 import { loadConfig, readToken } from "../config/config.ts";
 import { HealthMonitor } from "../server/health.ts";
 import { startMcpServer } from "../server/mcp.ts";
@@ -24,8 +25,18 @@ export async function startServe(ctx: CommandContext, options: ServeOptions = {}
   const token = readToken(ctx.paths);
   const port = options.port ?? config.port;
   const logger = new Logger(ctx.paths.logFile, config.log_level, { console: options.console ?? false });
-  const bridge = ctx.bridgeFactory();
-  const health = new HealthMonitor({ bridge, version: VERSION });
+  let health: HealthMonitor | undefined;
+  const connection = new ResilientBridge({
+    bridge: ctx.bridgeFactory(),
+    autoLaunchOutlook: config.auto_launch_outlook,
+    onLog: (event, fields) => logger.info(event, fields),
+    onStateChange: () => health?.invalidate(),
+  });
+  health = new HealthMonitor({
+    bridge: connection,
+    version: VERSION,
+    connection: () => connection.snapshot(),
+  });
 
   let stop!: () => void;
   const done = new Promise<void>((resolve) => {
@@ -34,9 +45,9 @@ export async function startServe(ctx: CommandContext, options: ServeOptions = {}
 
   let server: ReturnType<typeof startMcpServer>;
   try {
-    server = startMcpServer({ config: { port }, token, health, version: VERSION, logger });
+    server = startMcpServer({ config: { port }, token, health: health!, version: VERSION, logger });
   } catch (e) {
-    bridge.close();
+    connection.close();
     throw new Error(`could not listen on 127.0.0.1:${port}: ${errorText(e)}`);
   }
 
@@ -46,7 +57,7 @@ export async function startServe(ctx: CommandContext, options: ServeOptions = {}
     stopped = true;
     logger.info("server_stopping", { reason });
     server.stop();
-    bridge.close();
+    connection.close();
     if (options.signals ?? true) {
       process.off("SIGINT", onSigint);
       process.off("SIGTERM", onSigterm);
@@ -62,6 +73,7 @@ export async function startServe(ctx: CommandContext, options: ServeOptions = {}
   }
 
   logger.info("serve_ready", { port: server.port });
+  void connection.start().then((state) => logger.info("outlook_initial_state", { state }));
   return {
     port: server.port,
     url: server.url,

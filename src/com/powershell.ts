@@ -240,6 +240,10 @@ export class PowerShellComBridge implements ComBridge {
     return this.request<PingResult>("ping", { launch: options.launch === true }, options.timeoutMs ?? 60_000);
   }
 
+  reset(): void {
+    this.kill(connectionLost("COM objects dropped for a reconnect"));
+  }
+
   async listFolders(args: { maxDepth: number; mailbox?: string | null }): Promise<FolderNode[]> {
     const result = await this.request<unknown>("listFolders", {
       maxDepth: args.maxDepth,

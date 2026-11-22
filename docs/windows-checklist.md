@@ -40,7 +40,10 @@ normal, non-elevated session: COM automation does not cross elevation.
 - [ ] An in-tenant sender shown as `/O=EXCHANGELABS/...` resolves to an SMTP address through `PR_SMTP_ADDRESS` (`0x39FE001E`).
 - [ ] 100 sequential `list_mail(limit=1)` calls complete; note the cold-start time and the average call time.
 - [ ] Open a modal Outlook prompt (for example a profile or security prompt) during a call. The call times out, the helper is replaced, and the next call after closing the prompt works.
-- [ ] Close Outlook while the daemon runs. Calls fail with a retryable error. Start Outlook again; the next call reconnects without restarting the daemon.
+- [ ] Close Outlook while the daemon runs. Calls fail with a retryable error. `/health` says `waiting_for_outlook` with a retry time.
+- [ ] Start Outlook again. Within 60 seconds `/health` says `connected` and calls work, without restarting the daemon.
+- [ ] The log shows `outlook_disconnected`, `outlook_reconnect_scheduled` and `outlook_connected`.
+- [ ] With `auto_launch_outlook` off, closing Outlook never makes the daemon start it. Turn it on; the next probe starts Outlook once.
 
 ## Mail and calendar reads (#5 phase 1)
 

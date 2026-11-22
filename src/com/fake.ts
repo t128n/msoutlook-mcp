@@ -92,6 +92,8 @@ export interface FakeState {
   attendee_busy: Map<string, string>;
   next_id: number;
   latency_ms: number;
+  last_ping_launch: boolean;
+  resets: number;
 }
 
 export interface FakeBridgeOptions {
@@ -146,6 +148,8 @@ export class FakeComBridge implements ComBridge {
       attendee_busy: new Map(),
       next_id: 0,
       latency_ms: 0,
+      last_ping_launch: false,
+      resets: 0,
     };
   }
 
@@ -302,7 +306,8 @@ export class FakeComBridge implements ComBridge {
     return out;
   }
 
-  async ping(_options: { launch?: boolean; timeoutMs?: number } = {}): Promise<PingResult> {
+  async ping(options: { launch?: boolean; timeoutMs?: number } = {}): Promise<PingResult> {
+    this.state.last_ping_launch = options.launch === true;
     await this.ready();
     const inbox = [...this.state.mail.values()].filter((m) => this.folderMatches(m.folder, "inbox"));
     return {
@@ -741,6 +746,10 @@ export class FakeComBridge implements ComBridge {
     );
     if (!contact) throw new ComError({ kind: "com", detail: `CONTACT_NOT_FOUND: ${args.smtpAddress}` });
     return { ...contact };
+  }
+
+  reset(): void {
+    this.state.resets += 1;
   }
 
   close(): void {
