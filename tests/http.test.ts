@@ -187,9 +187,9 @@ describe("HTTP daemon", () => {
   });
 
   test("a mismatched Mcp-Name header is 400", async () => {
-    const { rpc } = start();
+    const { rpc } = start(true);
     const response = await rpc(
-      { jsonrpc: "2.0", id: 5, method: "events/poll", params: { name: "new_mail" } },
+      { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "list_mail", arguments: {} } },
       { authorization: "Bearer test-token", "content-type": "application/json", "mcp-name": "other" },
     );
     expect(response.status).toBe(400);

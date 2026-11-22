@@ -398,7 +398,9 @@ function Op-ListMail($req) {
   $ns = Get-Ns $false
   $folder = Resolve-Folder $ns ([string]$req.folder) ([string]$req.mailbox)
   $items = $folder.Items
-  $items.Sort('[ReceivedTime]', $true)
+  $ascending = $false
+  if ($req.sortAscending) { $ascending = $true }
+  $items.Sort('[ReceivedTime]', (-not $ascending))
   $filter = [string]$req.filter
   if ($filter) { $items = $items.Restrict('@SQL=' + $filter) }
   $limit = 20

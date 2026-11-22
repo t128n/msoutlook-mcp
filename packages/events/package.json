@@ -1,0 +1,10 @@
+{
+  "name": "@msoutlook/events",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local MCP Events authoring interface (vendored until the shared package exists)",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

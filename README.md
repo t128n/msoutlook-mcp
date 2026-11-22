@@ -9,7 +9,7 @@ It is a port of [Astral0/outlook-com-mcp](https://github.com/Astral0/outlook-com
 ## Idea
 
 - **Same safety model as the original:** drafts first, recipient allowlist re-checked at send time, sending off by default.
-- **Events:** a `new_mail` event by polling the Inbox, so an agent can wake when mail arrives.
+- **Events:** a `new_mail` event by polling the Inbox, so an agent can wake when mail arrives. Thin payload, no body, persisted cursor.
 - **One executable:** `setup`, `doctor`, `install`, `uninstall`, `upgrade`, `serve`, `config`, `version`.
 - **A local daemon, not stdio:** loopback HTTP with a bearer token, so the poller keeps running between client sessions.
 - **No addon:** a persistent PowerShell process owns the COM objects. A stuck call is killed and replaced.
@@ -48,6 +48,7 @@ arguments and differences from the original.
 
 - [docs/cli.md](docs/cli.md): commands, files, config keys, Task Scheduler, endpoints.
 - [docs/tools.md](docs/tools.md): the 27 tools, phases and argument differences.
+- [docs/events.md](docs/events.md): `new_mail`, cursors, push streams and limits.
 - [docs/spike-com.md](docs/spike-com.md): why the PowerShell bridge, what was verified.
 - [docs/windows-checklist.md](docs/windows-checklist.md): the manual test list for a real Windows machine.
 
