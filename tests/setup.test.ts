@@ -86,6 +86,32 @@ describe("setup", () => {
     expect(printed).toContain("Minimize Outlook");
   });
 
+  test("interactive setup asks for the port", async () => {
+    const { dir, paths } = temp("darwin");
+    const d = deps("darwin", dir);
+    const questions: string[] = [];
+    d.value.ask = async (question: string, defaultValue: string) => {
+      questions.push(question);
+      if (question.startsWith("Port")) return "31234";
+      if (question.startsWith("Allowed recipients")) return "example.com";
+      if (question.startsWith("Allow sending")) return "n";
+      if (question.startsWith("Let the daemon")) return "n";
+      return defaultValue;
+    };
+    const code = await runSetup({ interactive: true, startOutlookAtLogon: false }, d.value);
+    expect(code).toBe(0);
+    expect(questions[0]).toContain("Port on 127.0.0.1");
+    expect(loadConfig(paths).port).toBe(31234);
+    expect(d.output.join("\n")).toContain("http://127.0.0.1:31234/mcp");
+  });
+
+  test("the default port is 28471", async () => {
+    const { dir, paths } = temp("darwin");
+    const d = deps("darwin", dir);
+    await runSetup({ interactive: false, startOutlookAtLogon: false }, d.value);
+    expect(loadConfig(paths).port).toBe(28471);
+  });
+
   test("prints a usable MCP snippet", () => {
     const snippet = JSON.parse(mcpSnippet(28471, "secret")) as {
       mcpServers: { outlook: { type: string; url: string; headers: { Authorization: string } } };
