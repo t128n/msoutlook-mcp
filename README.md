@@ -49,6 +49,63 @@ Download `msoutlook-mcp-x86_64-pc-windows-msvc.zip` from the
 
 Start Outlook, sign in, and minimize it. The daemon waits for Outlook and reconnects on its own.
 
+## Let your agent set it up
+
+Paste this into OpenCode (or another coding agent) on the Windows machine:
+
+> Set up `msoutlook-mcp` for OpenCode on this Windows machine with **classic**
+> Outlook, not the new Outlook.
+>
+> 1. Install the latest release with `mise use -g github:t128n/msoutlook-mcp`
+>    (or download `msoutlook-mcp-x86_64-pc-windows-msvc.zip` from
+>    https://github.com/t128n/msoutlook-mcp/releases). Confirm
+>    `msoutlook-mcp version`.
+> 2. Ask me for my recipient allowlist (recommended: my own domain), whether to
+>    allow sending (default **no**), and whether to start Outlook minimized at
+>    log on (recommended **yes**). Do not enable sending unless I explicitly
+>    say yes.
+> 3. Run `msoutlook-mcp setup --non-interactive --allow "<list>"` with
+>    `--allow-send` only if I agreed, and `--outlook-logon` or
+>    `--no-outlook-logon` per my answer. Then run `msoutlook-mcp install` and
+>    `msoutlook-mcp doctor`.
+> 4. Add a remote MCP server named `outlook` to my global OpenCode config using
+>    the V2 `mcp.servers` shape: URL `http://127.0.0.1:8787/mcp`,
+>    `"oauth": false`, `"protocol": "auto"`, and the header
+>    `Authorization: Bearer <token>`. Read the token from
+>    `%LOCALAPPDATA%\msoutlook-mcp\token`. Prefer setting
+>    `MSOUTLOOK_MCP_TOKEN` in my user environment and referencing
+>    `{env:MSOUTLOOK_MCP_TOKEN}`; keep the token out of any public repo.
+> 5. Run `opencode mcp list`, confirm `outlook` is connected, then call `whoami`
+>    and `health_check` and `list_mail` with `limit: 3`. Do not send mail,
+>    create drafts, or change Outlook data during setup.
+> 6. Tell me to **minimize Outlook; do not close it**. If a check fails, report
+>    the exact `doctor` line and its fix.
+
+The OpenCode config it should produce:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "outlook": {
+        "type": "remote",
+        "url": "http://127.0.0.1:8787/mcp",
+        "oauth": false,
+        "headers": {
+          "Authorization": "Bearer {env:MSOUTLOOK_MCP_TOKEN}"
+        },
+        "protocol": "auto"
+      }
+    }
+  }
+}
+```
+
+`setup` also prints a generic `mcpServers` snippet with the token. Use the
+OpenCode shape above for OpenCode, or the printed snippet for a client that uses
+`mcpServers`.
+
 ## Tools
 
 All 27 tools are available: read mail and calendar, `health_check`, `whoami`,
