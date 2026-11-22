@@ -21,6 +21,7 @@ import type {
   MailSummary,
   PingResult,
   PrepareReplyArgs,
+  ReadMailArgs,
   RuleSummary,
   SearchMailArgs,
 } from "./types.ts";
@@ -277,20 +278,14 @@ export class PowerShellComBridge implements ComBridge {
       query: args.query,
       scope: args.scope,
       filter: args.filter,
+      cursorAt: args.cursor?.at ?? null,
+      cursorIds: args.cursor?.ids ?? [],
     });
     return { ...result, items: array<MailSummary>(result.items) };
   }
 
-  async readMail(args: {
-    entryId: string;
-    maxBodyBytes: number;
-    includeHtml: boolean;
-    includeTransportHeaders?: boolean;
-    attachmentMode?: "metadata" | "base64";
-    maxAttachmentBytes?: number;
-    maxAttachmentTotalBytes?: number;
-  }): Promise<MailDetail> {
-    const result = await this.request<MailDetail>("readMail", {
+  async readMail(args: ReadMailArgs): Promise<MailDetail> {
+    const params = {
       entryId: args.entryId,
       maxBodyBytes: args.maxBodyBytes,
       includeHtml: args.includeHtml,
@@ -298,7 +293,12 @@ export class PowerShellComBridge implements ComBridge {
       includeAttachmentBytes: args.attachmentMode === "base64",
       maxAttachmentBytes: args.maxAttachmentBytes ?? null,
       maxAttachmentTotalBytes: args.maxAttachmentTotalBytes ?? null,
-    });
+    };
+    // Saving and base64-encoding several MiB takes the same work as a download.
+    const result =
+      args.attachmentMode === "base64"
+        ? await this.heavy<MailDetail>("readMail", params)
+        : await this.request<MailDetail>("readMail", params);
     return {
       ...result,
       recipients: array<MailRecipient>(result.recipients),

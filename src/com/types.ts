@@ -52,6 +52,7 @@ export interface MailRecipient {
 }
 
 export type AttachmentSkipReason = "too_large" | "total_cap" | "unavailable";
+export type AttachmentMode = "metadata" | "base64";
 
 export interface AttachmentInfo {
   index: number;
@@ -79,9 +80,20 @@ export interface MailDetail extends MailSummary {
    * (0x007D001F), only when the caller asked for it. Untrusted data.
    */
   transport_headers?: string;
+  /** True when the helper or host capped the block. */
   transport_headers_truncated?: boolean;
   recipients: MailRecipient[];
   attachments: AttachmentInfo[];
+}
+
+export interface ReadMailArgs {
+  entryId: string;
+  maxBodyBytes: number;
+  includeHtml: boolean;
+  includeTransportHeaders?: boolean;
+  attachmentMode?: AttachmentMode;
+  maxAttachmentBytes?: number;
+  maxAttachmentTotalBytes?: number;
 }
 
 export interface ListMailArgs {
@@ -113,6 +125,8 @@ export interface SearchMailArgs {
   query: string;
   scope: "subject_body" | "subject" | "sender" | "all";
   filter: string;
+  /** Continue after this (ReceivedTime, EntryID) boundary; search is newest-first. */
+  cursor?: MailCursor | null;
 }
 
 export interface CreateDraftArgs {

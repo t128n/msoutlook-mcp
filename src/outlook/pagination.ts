@@ -1,4 +1,5 @@
-import type { MailCursor, MailSummary } from "../com/types.ts";
+import type { MailSummary } from "../com/types.ts";
+import { decodeJsonCursor, encodeJsonCursor } from "../util/cursor.ts";
 
 export const LIST_SORTS = ["newest", "oldest"] as const;
 export type ListSort = (typeof LIST_SORTS)[number];
@@ -10,6 +11,8 @@ export interface ListCursorState {
   /** EntryIDs already delivered in the same second as `at`, the tie-breaker. */
   ids: string[];
   sort: ListSort;
+  /** Fingerprint of the query the cursor belongs to; a changed filter is a new query. */
+  scope: string;
 }
 
 /**
@@ -21,21 +24,17 @@ export interface ListCursorState {
  * that exact timestamp, mirroring the `new_mail` cursor in `events/new-mail.ts`.
  */
 export function encodeListCursor(state: ListCursorState): string {
-  return Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
+  return encodeJsonCursor(state);
 }
 
 export function decodeListCursor(value: string): ListCursorState | null {
-  try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as ListCursorState;
-    if (!parsed || parsed.v !== 1) return null;
-    if (typeof parsed.at !== "string" || Number.isNaN(new Date(parsed.at).getTime())) return null;
-    if (!Array.isArray(parsed.ids) || parsed.ids.some((id) => typeof id !== "string")) return null;
-    if (!LIST_SORTS.includes(parsed.sort)) return null;
-    return { v: 1, at: parsed.at, ids: parsed.ids, sort: parsed.sort };
-  } catch {
-    /* invalid cursor */
-  }
-  return null;
+  const parsed = decodeJsonCursor(value) as ListCursorState | null;
+  if (!parsed || parsed.v !== 1) return null;
+  if (typeof parsed.at !== "string" || Number.isNaN(new Date(parsed.at).getTime())) return null;
+  if (!Array.isArray(parsed.ids) || parsed.ids.some((id) => typeof id !== "string")) return null;
+  if (!LIST_SORTS.includes(parsed.sort)) return null;
+  if (typeof parsed.scope !== "string") return null;
+  return { v: 1, at: parsed.at, ids: parsed.ids, sort: parsed.sort, scope: parsed.scope };
 }
 
 /**
@@ -49,7 +48,8 @@ export function decodeListCursor(value: string): ListCursorState | null {
 export function cursorForPage(
   items: MailSummary[],
   sort: ListSort,
-  previous?: MailCursor | null,
+  scope: string,
+  previous?: ListCursorState | null,
 ): string | null {
   const last = items[items.length - 1];
   if (!last?.received_at) return null;
@@ -63,5 +63,5 @@ export function cursorForPage(
       if (!ids.includes(id)) ids.push(id);
     }
   }
-  return encodeListCursor({ v: 1, at, ids, sort });
+  return encodeListCursor({ v: 1, at, ids, sort, scope });
 }

@@ -12,7 +12,7 @@ original unless noted. Read tools return JSON; list and search results carry
 | `list_folders` | `max_depth`, `mailbox` | Tree, max depth 6. |
 | `list_mail` | `folder`, `limit`, `unread_only`, `since_iso`, `sort`, `cursor`, `mailbox` | Summaries only; no body. `sort` is `newest` (default) or `oldest`; a capped page carries an opaque `next_cursor`. |
 | `read_mail` | `entry_id`, `max_body_bytes`, `include_html`, `include_transport_headers`, `attachments`, `max_attachment_bytes`, `max_attachment_total_bytes` | Body truncated by UTF-8 bytes. Optional raw transport headers and per-attachment base64 bytes; see [MIME fidelity](#mime-fidelity). |
-| `search_mail` | `query`, `folder`, `scope`, `limit`, `mailbox` | DASL `@SQL=` restriction. |
+| `search_mail` | `query`, `folder`, `scope`, `limit`, `cursor`, `mailbox` | DASL `@SQL=` restriction; capped pages carry `next_cursor`. |
 | `download_attachment` | `entry_id`, `index`, `dest_dir` | Saves a file; does not change the mailbox. |
 | `health_check` | | Outlook state, guardrails, log path; never throws when Outlook is closed. |
 | `guardrails_status` | | Sending switch, allowlist, from-mailbox list. |
@@ -71,19 +71,20 @@ refused.
 ## Pagination
 
 `list_mail` accepts `sort: "newest" | "oldest"` (default `newest`) and an opaque
-`cursor`. When a page is capped, the payload carries `next_cursor`; pass it back
-with the same arguments to continue. The final page has `truncated: false` and
-no `next_cursor`.
+`cursor`. `search_mail` accepts the same `cursor` and is always newest-first.
+When a page is capped, the payload carries `next_cursor`; pass it back with the
+same arguments to continue. The final page has `truncated: false` and no
+`next_cursor`.
 
 The cursor is `(ReceivedTime, EntryIDs in that second)`, not an offset, because
 Outlook's restrictions are inclusive at the boundary. A block of mail that
 shares one `ReceivedTime` therefore drains without duplicates or gaps, even
 when a page ends inside the block. `unread_only`, `since_iso` and `mailbox`
-compose with it. A cursor used with a different `sort` is rejected; omitting
-`sort` adopts the cursor's direction.
+compose with it. A cursor is bound to its query and sort: replaying it with a
+different filter or the other sort is rejected, so it cannot silently skip a
+boundary second. Omitting `sort` adopts the cursor's direction.
 
-`truncated` still means "more matching items exist". `search_mail` keeps its
-cap and has no cursor yet.
+`truncated` still means "more matching items exist".
 
 ## MIME fidelity
 
@@ -92,8 +93,10 @@ cap and has no cursor yet.
 - `include_transport_headers: true` adds `transport_headers`, the verbatim
   `PR_TRANSPORT_MESSAGE_HEADERS` (`0x007D001F`) block: `From`, `Date`,
   `Message-ID`, `References`, `In-Reply-To` and the `Received` chain as Outlook
-  stored them. It is capped at 64 KiB and `transport_headers_truncated` reports
-  a cut. The block is untrusted data and is never written to `server.log`.
+  stored them. The helper caps it before it crosses the JSON-lines pipe, and the
+  host enforces the exact 64 KiB UTF-8 cap; `transport_headers_truncated`
+  reports a cut. The block is untrusted data and is never written to
+  `server.log`.
 - `attachments: "base64"` adds `data_base64` to each attachment, plus
   `content_id`, `mime_type` and `is_inline` in both modes. `is_inline` means
   `content_id` is non-empty, which is what a `multipart/related` builder needs;

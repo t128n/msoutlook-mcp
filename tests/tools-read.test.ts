@@ -237,6 +237,59 @@ describe("read tools", () => {
     expect((result.data as { error: string }).error).toBe("INVALID_ARGUMENT");
   });
 
+  test("list_mail rejects a cursor replayed with a different filter", async () => {
+    const { bridge, call } = setup();
+    const t = Date.now();
+    for (let i = 0; i < 3; i += 1) {
+      bridge.seedMail({ subject: `f${i}`, received_at: new Date(t - i * 1_000).toISOString() });
+    }
+    const first = await call("list_mail", { limit: 1, sort: "oldest" });
+    const cursor = (first.data as { next_cursor: string }).next_cursor;
+    const result = await call("list_mail", { limit: 1, sort: "oldest", cursor, unread_only: true });
+    expect(result.isError).toBe(true);
+    expect((result.data as { error: string }).error).toBe("INVALID_ARGUMENT");
+  });
+
+  test("search_mail drains a capped result set with a cursor", async () => {
+    const { bridge, call } = setup();
+    const t = Date.now();
+    for (let i = 0; i < 5; i += 1) {
+      bridge.seedMail({ subject: `budget ${i + 1}`, received_at: new Date(t + i * 1_000).toISOString() });
+    }
+    bridge.seedMail({ subject: "lunch", received_at: new Date(t + 9_000).toISOString() });
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    while (true) {
+      const result = await call("search_mail", { query: "budget", scope: "subject", limit: 2, cursor });
+      const data = result.data as { items: { subject: string }[]; truncated: boolean; next_cursor?: string };
+      expect(result.isError).toBeUndefined();
+      seen.push(...data.items.map((item) => item.subject));
+      pages += 1;
+      if (!data.truncated) {
+        expect(data.next_cursor).toBeUndefined();
+        break;
+      }
+      cursor = data.next_cursor;
+      if (pages > 10) throw new Error("pagination did not terminate");
+    }
+    expect(seen).toEqual(["budget 5", "budget 4", "budget 3", "budget 2", "budget 1"]);
+    expect(pages).toBe(3);
+  });
+
+  test("search_mail rejects a cursor from a different query", async () => {
+    const { bridge, call } = setup();
+    const t = Date.now();
+    bridge.seedMail({ subject: "budget", received_at: new Date(t).toISOString() });
+    bridge.seedMail({ subject: "budget again", received_at: new Date(t - 1_000).toISOString() });
+    bridge.seedMail({ subject: "lunch", received_at: new Date(t - 2_000).toISOString() });
+    const first = await call("search_mail", { query: "budget", limit: 1 });
+    const cursor = (first.data as { next_cursor: string }).next_cursor;
+    const result = await call("search_mail", { query: "lunch", limit: 1, cursor });
+    expect(result.isError).toBe(true);
+    expect((result.data as { error: string }).error).toBe("INVALID_ARGUMENT");
+  });
+
   test("search_mail supports subject, sender and subject_body", async () => {
     const { bridge, call } = setup();
     bridge.seedMail({ subject: "Budget review", body: "numbers", sender_smtp: "alice@example.com" });
@@ -414,6 +467,19 @@ describe("read tools", () => {
     expect(attachments[0]!.data_base64).toBe(Buffer.from(eight).toString("base64"));
     expect(attachments[1]!.data_base64).toBe("");
     expect(attachments[1]!.skipped_reason).toBe("total_cap");
+  });
+
+  test("read_mail reports an attachment without bytes as unavailable", async () => {
+    const { bridge, call } = setup();
+    const mail = bridge.seedMail({
+      subject: "no bytes",
+      attachments: [{ filename: "ghost.bin", size: 10 }],
+    });
+    const result = await call("read_mail", { entry_id: mail.entry_id, attachments: "base64" });
+    const attachment = (result.data as { attachments: { data_base64: string; skipped_reason: string }[] })
+      .attachments[0]!;
+    expect(attachment.data_base64).toBe("");
+    expect(attachment.skipped_reason).toBe("unavailable");
   });
 
   test("download_attachment writes the file", async () => {

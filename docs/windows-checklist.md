@@ -49,6 +49,10 @@ normal, non-elevated session: COM automation does not cross elevation.
 
 - [ ] `list_folders` walks the default store and a shared store if one is mounted.
 - [ ] `read_mail` returns body, recipients and attachment metadata; `max_body_bytes` truncates.
+- [ ] `read_mail(include_transport_headers=true)` on a reply returns a block that parses as RFC 5322 with `References` and `In-Reply-To`; without the flag the field is absent.
+- [ ] `read_mail(attachments="base64")` returns an inline image with a `content_id`, `mime_type`, `is_inline=true`, and bytes identical to `download_attachment`; a part over the cap reports `skipped_reason`.
+- [ ] `list_mail(sort="oldest", cursor=...)` drains a window larger than one page, including a block of mail that shares one `ReceivedTime`, with no duplicates or gaps.
+- [ ] `search_mail(cursor=...)` drains a capped result set; a cursor replayed with a different query or `list_mail` filter is rejected.
 - [ ] `download_attachment` saves a file and does not overwrite an existing one.
 - [ ] `search_mail` works for subject, sender and subject+body.
 - [ ] `list_mail` and `search_mail` report `truncated` and `coverage` when the limit is hit.
