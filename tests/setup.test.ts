@@ -87,11 +87,11 @@ describe("setup", () => {
   });
 
   test("prints a usable MCP snippet", () => {
-    const snippet = JSON.parse(mcpSnippet(8787, "secret")) as {
+    const snippet = JSON.parse(mcpSnippet(28471, "secret")) as {
       mcpServers: { outlook: { type: string; url: string; headers: { Authorization: string } } };
     };
     expect(snippet.mcpServers.outlook.type).toBe("remote");
-    expect(snippet.mcpServers.outlook.url).toBe("http://127.0.0.1:8787/mcp");
+    expect(snippet.mcpServers.outlook.url).toBe("http://127.0.0.1:28471/mcp");
     expect(snippet.mcpServers.outlook.headers.Authorization).toBe("Bearer secret");
   });
 

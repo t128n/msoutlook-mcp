@@ -25,6 +25,7 @@ afterEach(() => {
 
 describe("config", () => {
   test("defaults are safe: sending off, auto-launch off", () => {
+    expect(DEFAULT_CONFIG.port).toBe(28471);
     expect(DEFAULT_CONFIG.allow_send).toBe(false);
     expect(DEFAULT_CONFIG.auto_launch_outlook).toBe(false);
     expect(DEFAULT_CONFIG.allowed_recipients).toEqual([]);

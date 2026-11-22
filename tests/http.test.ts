@@ -221,7 +221,7 @@ describe("request guards", () => {
     expect(hostOf("127.0.0.1:8080")).toBe("127.0.0.1");
     expect(hostOf("localhost:8080")).toBe("localhost");
     expect(hostOf("[::1]:8080")).toBe("[::1]");
-    expect(isLoopbackHost("127.0.0.1:8787")).toBe(true);
+    expect(isLoopbackHost("127.0.0.1:28471")).toBe(true);
     expect(isLoopbackHost("localhost")).toBe(true);
     expect(isLoopbackHost("evil.example")).toBe(false);
     expect(isLoopbackHost("127.0.0.1.evil.example")).toBe(false);

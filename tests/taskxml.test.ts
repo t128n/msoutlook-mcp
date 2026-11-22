@@ -11,7 +11,7 @@ const user = "EXAMPLE\\user";
 
 describe("Task Scheduler XML", () => {
   test("runs at logon of the current user, interactive, least privilege, no limit", () => {
-    const xml = taskXml(daemonTaskSpec("C:\\Users\\user\\AppData\\Local\\msoutlook-mcp\\bin\\msoutlook-mcp.exe", user, "C:\\Users\\user\\AppData\\Local\\msoutlook-mcp", 8787));
+    const xml = taskXml(daemonTaskSpec("C:\\Users\\user\\AppData\\Local\\msoutlook-mcp\\bin\\msoutlook-mcp.exe", user, "C:\\Users\\user\\AppData\\Local\\msoutlook-mcp", 28471));
     expect(xml).toContain("<LogonTrigger>");
     expect(xml).toContain(`<UserId>${user}</UserId>`);
     expect(xml).toContain("<LogonType>InteractiveToken</LogonType>");
@@ -20,7 +20,7 @@ describe("Task Scheduler XML", () => {
     expect(xml).toContain("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>");
     expect(xml).toContain("<RestartOnFailure>");
     expect(xml).toContain("<Command>C:\\Users\\user\\AppData\\Local\\msoutlook-mcp\\bin\\msoutlook-mcp.exe</Command>");
-    expect(xml).toContain("<Arguments>serve --port 8787</Arguments>");
+    expect(xml).toContain("<Arguments>serve --port 28471</Arguments>");
   });
 
   test("the Outlook task starts Outlook minimized through cmd", () => {

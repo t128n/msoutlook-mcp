@@ -19,7 +19,7 @@ if (args.has("--help") || args.has("-h")) {
   console.log(`Usage: bun scripts/smoke.ts [--writes] [--send] [--rules]
 
 Environment:
-  MSOUTLOOK_MCP_URL    default http://127.0.0.1:8787/mcp
+  MSOUTLOOK_MCP_URL    default http://127.0.0.1:28471/mcp
   MSOUTLOOK_MCP_TOKEN  default: the token file in the app data folder
   SMOKE_TO             required for --writes
   SMOKE_QUERY          optional search term for search_mail
@@ -29,7 +29,7 @@ Environment:
   process.exit(0);
 }
 
-const url = process.env.MSOUTLOOK_MCP_URL ?? "http://127.0.0.1:8787/mcp";
+const url = process.env.MSOUTLOOK_MCP_URL ?? "http://127.0.0.1:28471/mcp";
 const token =
   process.env.MSOUTLOOK_MCP_TOKEN ??
   (() => {
