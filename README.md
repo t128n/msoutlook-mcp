@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server for **classic Outlook on Window
 
 It is a port of [Astral0/outlook-com-mcp](https://github.com/Astral0/outlook-com-mcp) (Python, MIT). The tool inventory, the write-guardrail model and the documented Outlook gotchas follow that project. It drives the already-authenticated Outlook desktop client, so it needs no app registration and no Microsoft Graph permissions.
 
-> **Status: v0.1 feature-complete, awaiting Windows verification.** The COM bridge, CLI/daemon, lifecycle, all 27 tools and `new_mail` are implemented. Real Outlook, Task Scheduler and OpenCode behaviour still need the manual Windows checklist; see the [tracking issue](https://github.com/t128n/msoutlook-mcp/issues/1).
+> **Status: v0.1.0 released, awaiting Windows verification.** The COM bridge, CLI/daemon, lifecycle, all 27 tools and `new_mail` are implemented. Real Outlook, Task Scheduler and OpenCode behaviour still need the manual Windows checklist; see the [tracking issue](https://github.com/t128n/msoutlook-mcp/issues/1).
 
 ## Idea
 
@@ -24,9 +24,28 @@ It is a port of [Astral0/outlook-com-mcp](https://github.com/Astral0/outlook-com
 
 ## Install
 
-1. Run `msoutlook-mcp.exe setup`. It writes the config and token, asks for the recipient allowlist and the send switch, and prints an MCP client entry.
-2. Run `msoutlook-mcp.exe install`. No admin rights; it copies the exe to `%LOCALAPPDATA%\msoutlook-mcp\bin` and registers a Task Scheduler logon task.
-3. Run `msoutlook-mcp.exe doctor` if anything does not work. Every line says what to fix.
+### mise
+
+```sh
+mise use -g github:t128n/msoutlook-mcp@0.1.0
+msoutlook-mcp setup
+```
+
+`mise install github:t128n/msoutlook-mcp` installs the latest release. The
+Windows x64 asset is the supported build; the macOS and Linux assets are
+development builds.
+
+### Direct download
+
+Download `msoutlook-mcp-x86_64-pc-windows-msvc.zip` from the
+[releases page](https://github.com/t128n/msoutlook-mcp/releases) and run
+`msoutlook-mcp.exe`.
+
+### First run
+
+1. Run `msoutlook-mcp setup`. It writes the config and token, asks for the recipient allowlist and the send switch, and prints an MCP client entry.
+2. Run `msoutlook-mcp install`. No admin rights; it copies the exe to `%LOCALAPPDATA%\msoutlook-mcp\bin` and registers a Task Scheduler logon task.
+3. Run `msoutlook-mcp doctor` if anything does not work. Every line says what to fix.
 
 Start Outlook, sign in, and minimize it. The daemon waits for Outlook and reconnects on its own.
 
@@ -53,6 +72,7 @@ inventory, arguments, guardrails and differences from the original.
 - [docs/smoke.md](docs/smoke.md): the manual smoke test against a real test mailbox.
 - [docs/spike-com.md](docs/spike-com.md): why the PowerShell bridge, what was verified.
 - [docs/windows-checklist.md](docs/windows-checklist.md): the manual test list for a real Windows machine.
+- [docs/release.md](docs/release.md): release assets, tagging and mise installs.
 
 ## Development
 
