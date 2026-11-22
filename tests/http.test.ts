@@ -3,8 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeComBridge } from "../src/com/fake.ts";
-import { Logger } from "../src/util/logger.ts";
+import { DEFAULT_CONFIG } from "../src/config/config.ts";
+import { Guardrails } from "../src/config/guardrails.ts";
+import { appPaths } from "../src/config/paths.ts";
 import { HealthMonitor } from "../src/server/health.ts";
+import { createTools } from "../src/tools/index.ts";
+import { ToolRegistry } from "../src/tools/registry.ts";
+import { Logger } from "../src/util/logger.ts";
 import {
   PROTOCOL_VERSION,
   hostOf,
@@ -21,24 +26,39 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-function start() {
+function start(withTools = false) {
   const dir = mkdtempSync(join(tmpdir(), "msoutlook-http-"));
   dirs.push(dir);
+  const paths = appPaths({ MSOUTLOOK_MCP_HOME: dir }, "darwin");
   const bridge = new FakeComBridge();
   const health = new HealthMonitor({ bridge, version: "0.1.0", cacheMs: 0, timeoutMs: 500 });
+  const logger = new Logger(join(dir, "server.log"), "error");
+  let tools: ToolRegistry | undefined;
+  if (withTools) {
+    tools = createTools({
+      bridge,
+      guardrails: new Guardrails({ ...DEFAULT_CONFIG, allowed_recipients: ["example.com"] }),
+      health,
+      paths,
+      version: "0.1.0",
+      logger,
+      now: () => new Date(),
+    });
+  }
   const server = startMcpServer({
     config: { port: 0 },
     token: "test-token",
     health,
     version: "0.1.0",
-    logger: new Logger(join(dir, "server.log"), "error"),
+    logger,
+    tools,
   });
   handles.push(server);
   const base = `http://127.0.0.1:${server.port}`;
   const auth = { authorization: "Bearer test-token", "content-type": "application/json" };
   const rpc = async (body: unknown, headers: Record<string, string> = auth) =>
     fetch(`${base}/mcp`, { method: "POST", headers, body: JSON.stringify(body) });
-  return { server, base, auth, rpc, bridge, health };
+  return { server, base, auth, rpc, bridge, health, paths };
 }
 
 describe("HTTP daemon", () => {
@@ -110,12 +130,52 @@ describe("HTTP daemon", () => {
     expect(body.result.supportedVersions).toContain(PROTOCOL_VERSION);
   });
 
-  test("tools/list is empty until the tool phase", async () => {
+  test("tools/list is empty when no registry is installed", async () => {
     const { rpc } = start();
     const body = (await (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/list" })).json()) as {
       result: { tools: unknown[] };
     };
     expect(body.result.tools).toEqual([]);
+  });
+
+  test("tools/list exposes the phase 1 tools", async () => {
+    const { rpc } = start(true);
+    const body = (await (await rpc({ jsonrpc: "2.0", id: 30, method: "tools/list" })).json()) as {
+      result: { tools: { name: string; inputSchema: unknown }[] };
+    };
+    expect(body.result.tools.length).toBe(12);
+    expect(body.result.tools.map((t) => t.name)).toContain("list_mail");
+    expect(body.result.tools[0]!.inputSchema).toBeDefined();
+  });
+
+  test("tools/call returns text and structured content", async () => {
+    const { rpc, bridge } = start(true);
+    bridge.seedMail({ subject: "hello" });
+    const body = (await (
+      await rpc({ jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "list_mail", arguments: { limit: 5 } } })
+    ).json()) as {
+      result: { content: { type: string; text: string }[]; structuredContent: { count: number }; isError?: boolean };
+    };
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.structuredContent.count).toBe(1);
+    expect(JSON.parse(body.result.content[0]!.text).count).toBe(1);
+  });
+
+  test("tools/call rejects an unknown tool with InvalidParams", async () => {
+    const { rpc } = start(true);
+    const body = (await (
+      await rpc({ jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "nope", arguments: {} } })
+    ).json()) as { error: { code: number } };
+    expect(body.error.code).toBe(-32602);
+  });
+
+  test("a guardrail refusal is a tool result with isError, not a transport error", async () => {
+    const { rpc } = start(true);
+    const body = (await (
+      await rpc({ jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "read_mail", arguments: {} } })
+    ).json()) as { result: { isError: boolean; content: { text: string }[] } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain("INVALID_ARGUMENT");
   });
 
   test("unknown methods return -32601", async () => {

@@ -1,6 +1,8 @@
 import { errorText } from "../com/errors.ts";
 import { ResilientBridge } from "../com/resilient.ts";
 import { loadConfig, readToken } from "../config/config.ts";
+import { Guardrails } from "../config/guardrails.ts";
+import { createTools } from "../tools/index.ts";
 import { HealthMonitor } from "../server/health.ts";
 import { startMcpServer } from "../server/mcp.ts";
 import { Logger } from "../util/logger.ts";
@@ -43,9 +45,19 @@ export async function startServe(ctx: CommandContext, options: ServeOptions = {}
     stop = () => resolve();
   });
 
+  const tools = createTools({
+    bridge: connection,
+    guardrails: Guardrails.fromPaths(ctx.paths),
+    health: health!,
+    paths: ctx.paths,
+    version: VERSION,
+    logger,
+    now: ctx.now,
+  });
+
   let server: ReturnType<typeof startMcpServer>;
   try {
-    server = startMcpServer({ config: { port }, token, health: health!, version: VERSION, logger });
+    server = startMcpServer({ config: { port }, token, health: health!, version: VERSION, logger, tools });
   } catch (e) {
     connection.close();
     throw new Error(`could not listen on 127.0.0.1:${port}: ${errorText(e)}`);
