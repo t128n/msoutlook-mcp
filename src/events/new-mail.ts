@@ -1,5 +1,6 @@
 import type { ComBridge } from "../com/bridge.ts";
 import { receivedSince } from "../outlook/dasl.ts";
+import { decodeJsonCursor, encodeJsonCursor } from "../util/cursor.ts";
 import {
   defineEvent,
   type EventDefinition,
@@ -39,17 +40,13 @@ interface CursorState {
 }
 
 export function encodeCursor(state: CursorState): string {
-  return Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
+  return encodeJsonCursor(state);
 }
 
 export function decodeCursor(value: string): CursorState | null {
-  try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as CursorState;
-    if (parsed && parsed.v === 1 && typeof parsed.at === "string" && Array.isArray(parsed.ids)) {
-      if (!Number.isNaN(new Date(parsed.at).getTime())) return parsed;
-    }
-  } catch {
-    /* invalid cursor */
+  const parsed = decodeJsonCursor(value) as CursorState | null;
+  if (parsed && parsed.v === 1 && typeof parsed.at === "string" && Array.isArray(parsed.ids)) {
+    if (!Number.isNaN(new Date(parsed.at).getTime())) return parsed;
   }
   return null;
 }

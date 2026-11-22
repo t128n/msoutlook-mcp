@@ -51,10 +51,23 @@ export interface MailRecipient {
   type: number | null;
 }
 
+export type AttachmentSkipReason = "too_large" | "total_cap" | "unavailable";
+export type AttachmentMode = "metadata" | "base64";
+
 export interface AttachmentInfo {
   index: number;
   filename: string | null;
   size: number | null;
+  /** PR_ATTACH_CONTENT_ID (0x3712001F); "" when Outlook does not expose one. */
+  content_id: string;
+  /** PR_ATTACH_MIME_TAG (0x370E001F); "" when absent. */
+  mime_type: string;
+  /** Outlook's inline rule, simplified: a non-empty Content-ID means inline. */
+  is_inline: boolean;
+  /** Base64 bytes, only in the opt-in base64 attachment mode. */
+  data_base64?: string;
+  /** Why bytes are missing in base64 mode; never a silent drop. */
+  skipped_reason?: AttachmentSkipReason;
 }
 
 export interface MailDetail extends MailSummary {
@@ -62,8 +75,25 @@ export interface MailDetail extends MailSummary {
   body_truncated: boolean;
   html?: string;
   html_truncated?: boolean;
+  /**
+   * The raw RFC 5322 header block from PR_TRANSPORT_MESSAGE_HEADERS
+   * (0x007D001F), only when the caller asked for it. Untrusted data.
+   */
+  transport_headers?: string;
+  /** True when the helper or host capped the block. */
+  transport_headers_truncated?: boolean;
   recipients: MailRecipient[];
   attachments: AttachmentInfo[];
+}
+
+export interface ReadMailArgs {
+  entryId: string;
+  maxBodyBytes: number;
+  includeHtml: boolean;
+  includeTransportHeaders?: boolean;
+  attachmentMode?: AttachmentMode;
+  maxAttachmentBytes?: number;
+  maxAttachmentTotalBytes?: number;
 }
 
 export interface ListMailArgs {
@@ -77,6 +107,15 @@ export interface ListMailArgs {
   since_iso?: string | null;
   /** Oldest first; the new_mail poller needs this to advance its cursor. */
   sort_ascending?: boolean;
+  /** Continue after this (ReceivedTime, EntryID) boundary. */
+  cursor?: MailCursor | null;
+}
+
+export interface MailCursor {
+  /** ReceivedTime of the last item on the previous page, ISO UTC. */
+  at: string;
+  /** EntryIDs already delivered at exactly `at`; skipped on the next page. */
+  ids: string[];
 }
 
 export interface SearchMailArgs {
@@ -86,6 +125,8 @@ export interface SearchMailArgs {
   query: string;
   scope: "subject_body" | "subject" | "sender" | "all";
   filter: string;
+  /** Continue after this (ReceivedTime, EntryID) boundary; search is newest-first. */
+  cursor?: MailCursor | null;
 }
 
 export interface CreateDraftArgs {

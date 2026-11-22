@@ -16,6 +16,12 @@
  * Astral0/outlook-com-mcp (MIT), is the source of the COM behaviour and the
  * documented gotchas; see NOTICE.
  */
+import {
+  DEFAULT_MAX_ATTACHMENT_BYTES,
+  DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES,
+  MAX_TRANSPORT_HEADER_CHARS,
+} from "./limits.ts";
+
 export const OUTLOOK_HELPER_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -204,19 +210,78 @@ function Recipient-List($item) {
   return @($out)
 }
 
-function Attachment-List($item) {
-  $out = New-Object System.Collections.ArrayList
+function Attachment-Data($attachment, [int64]$maxBytes) {
+  # Save to a private temp file so the bytes are exactly what download_attachment
+  # writes, including embedded messages that have no PR_ATTACH_DATA_BIN value.
+  $tmp = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'msoutlook-mcp-' + [Guid]::NewGuid().ToString('N') + '.bin')
   try {
-    $count = [int]$item.Attachments.Count
-    for ($i = 1; $i -le $count; $i++) {
-      $a = $item.Attachments.Item($i)
-      [void]$out.Add([ordered]@{
-        index = $i
-        filename = [string]$a.FileName
-        size = [int64]$a.Size
-      })
+    $attachment.SaveAsFile($tmp)
+    $length = [int64](New-Object IO.FileInfo($tmp)).Length
+    if ($length -gt $maxBytes) { return [ordered]@{ skipped_reason = 'too_large' } }
+    $bytes = [IO.File]::ReadAllBytes($tmp)
+    return [ordered]@{
+      data_base64 = [Convert]::ToBase64String($bytes)
+      bytes = $length
     }
-  } catch { }
+  } catch {
+    return [ordered]@{ skipped_reason = 'unavailable' }
+  } finally {
+    try { if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force } } catch { }
+  }
+}
+
+function Attachment-List($item, [bool]$includeBytes = $false, [int64]$maxBytes = ${DEFAULT_MAX_ATTACHMENT_BYTES}, [int64]$maxTotal = ${DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES}) {
+  $out = New-Object System.Collections.ArrayList
+  $total = [int64]0
+  $count = 0
+  try { $count = [int]$item.Attachments.Count } catch { return @($out) }
+  for ($i = 1; $i -le $count; $i++) {
+    $entry = [ordered]@{
+      index = $i
+      filename = $null
+      size = $null
+      content_id = ''
+      mime_type = ''
+      is_inline = $false
+    }
+    if ($includeBytes) { $entry['data_base64'] = '' }
+    try {
+      $a = $item.Attachments.Item($i)
+      $size = $null
+      try { $size = [int64]$a.Size } catch { }
+      $contentId = ''
+      try { $contentId = [string](Get-Prop $a '0x3712001F') } catch { }
+      $mimeType = ''
+      try { $mimeType = [string](Get-Prop $a '0x370E001F') } catch { }
+      $entry['filename'] = [string]$a.FileName
+      $entry['size'] = $size
+      $entry['content_id'] = $contentId
+      $entry['mime_type'] = $mimeType
+      $entry['is_inline'] = (-not [string]::IsNullOrWhiteSpace($contentId))
+      if ($includeBytes) {
+        if ($null -ne $size -and $size -gt $maxBytes) {
+          $entry['skipped_reason'] = 'too_large'
+        } elseif ($null -ne $size -and ($total + $size) -gt $maxTotal) {
+          $entry['skipped_reason'] = 'total_cap'
+        } else {
+          $read = Attachment-Data $a $maxBytes
+          if ($read.Contains('data_base64')) {
+            if (($total + [int64]$read['bytes']) -gt $maxTotal) {
+              $entry['skipped_reason'] = 'total_cap'
+            } else {
+              $entry['data_base64'] = [string]$read['data_base64']
+              $total = $total + [int64]$read['bytes']
+            }
+          } else {
+            $entry['skipped_reason'] = [string]$read['skipped_reason']
+          }
+        }
+      }
+    } catch {
+      if ($includeBytes) { $entry['skipped_reason'] = 'unavailable' }
+    }
+    [void]$out.Add($entry)
+  }
   return @($out)
 }
 
@@ -394,6 +459,43 @@ function Op-ListFolders($req) {
   return @($out)
 }
 
+function Read-Cursor($req) {
+  $at = $null
+  if ($null -ne $req.cursorAt -and [string]$req.cursorAt -ne '') {
+    try { $at = [DateTimeOffset]::Parse([string]$req.cursorAt).ToUniversalTime() } catch { $at = $null }
+  }
+  $ids = @{}
+  try {
+    foreach ($cursorId in @($req.cursorIds)) {
+      if ($null -ne $cursorId -and [string]$cursorId -ne '') { $ids[[string]$cursorId] = $true }
+    }
+  } catch { }
+  return [pscustomobject]@{ at = $at; ids = $ids }
+}
+
+function Skip-By-Cursor($item, $cursor, [bool]$ascending) {
+  if ($null -eq $cursor -or $null -eq $cursor.at) { return $false }
+  $received = $null
+  try { $received = $item.ReceivedTime } catch { }
+  if ($null -eq $received) { return $false }
+  $at = $null
+  try { $at = [DateTimeOffset]$received } catch { }
+  if ($null -eq $at) { return $false }
+  # received_at has second precision, so a cursor boundary is a whole second.
+  $cmp = $at.ToUnixTimeSeconds().CompareTo($cursor.at.ToUnixTimeSeconds())
+  if ($ascending) {
+    if ($cmp -lt 0) { return $true }
+  } else {
+    if ($cmp -gt 0) { return $true }
+  }
+  if ($cmp -eq 0) {
+    $entryId = ''
+    try { $entryId = [string]$item.EntryID } catch { }
+    if ($cursor.ids.ContainsKey($entryId)) { return $true }
+  }
+  return $false
+}
+
 function Op-ListMail($req) {
   $ns = Get-Ns $false
   $folder = Resolve-Folder $ns ([string]$req.folder) ([string]$req.mailbox)
@@ -403,14 +505,17 @@ function Op-ListMail($req) {
   $items.Sort('[ReceivedTime]', (-not $ascending))
   $filter = [string]$req.filter
   if ($filter) { $items = $items.Restrict('@SQL=' + $filter) }
+  $cursor = Read-Cursor $req
   $limit = 20
   if ($req.limit) { $limit = [int]$req.limit }
   $out = New-Object System.Collections.ArrayList
   $item = $items.GetFirst()
   while ($null -ne $item -and $out.Count -lt $limit) {
-    $class = 0
-    try { $class = [int]$item.Class } catch { }
-    if ($class -eq 43) { [void]$out.Add((Summary-Mail $item)) }
+    if (-not (Skip-By-Cursor $item $cursor $ascending)) {
+      $class = 0
+      try { $class = [int]$item.Class } catch { }
+      if ($class -eq 43) { [void]$out.Add((Summary-Mail $item)) }
+    }
     $item = $items.GetNext()
   }
   $truncated = $false
@@ -440,14 +545,17 @@ function Op-SearchMail($req) {
   $items = $folder.Items
   $items.Sort('[ReceivedTime]', $true)
   $items = $items.Restrict('@SQL=' + [string]$req.filter)
+  $cursor = Read-Cursor $req
   $limit = 50
   if ($req.limit) { $limit = [int]$req.limit }
   $out = New-Object System.Collections.ArrayList
   $item = $items.GetFirst()
   while ($null -ne $item -and $out.Count -lt $limit) {
-    $class = 0
-    try { $class = [int]$item.Class } catch { }
-    if ($class -eq 43) { [void]$out.Add((Summary-Mail $item)) }
+    if (-not (Skip-By-Cursor $item $cursor $false)) {
+      $class = 0
+      try { $class = [int]$item.Class } catch { }
+      if ($class -eq 43) { [void]$out.Add((Summary-Mail $item)) }
+    }
     $item = $items.GetNext()
   }
   $truncated = $false
@@ -498,7 +606,29 @@ function Op-ReadMail($req) {
     $out['html_truncated'] = $htmlTruncated
   }
   $out['recipients'] = Recipient-List $item
-  $out['attachments'] = Attachment-List $item
+  $includeAttachmentBytes = $false
+  if ($req.includeAttachmentBytes) { $includeAttachmentBytes = $true }
+  $maxAttachmentBytes = [int64]${DEFAULT_MAX_ATTACHMENT_BYTES}
+  if ($null -ne $req.maxAttachmentBytes) { $maxAttachmentBytes = [int64]$req.maxAttachmentBytes }
+  $maxAttachmentTotalBytes = [int64]${DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES}
+  if ($null -ne $req.maxAttachmentTotalBytes) { $maxAttachmentTotalBytes = [int64]$req.maxAttachmentTotalBytes }
+  $out['attachments'] = Attachment-List -item $item -includeBytes $includeAttachmentBytes -maxBytes $maxAttachmentBytes -maxTotal $maxAttachmentTotalBytes
+  if ($req.includeTransportHeaders) {
+    $headers = ''
+    try { $headers = [string](Get-Prop $item '0x007D001F') } catch { }
+    $headersTruncated = $false
+    # Guard the helper/stdout path; the host enforces the exact UTF-8 byte cap.
+    if ($headers.Length -gt ${MAX_TRANSPORT_HEADER_CHARS}) {
+      $cut = ${MAX_TRANSPORT_HEADER_CHARS}
+      $last = [int][char]$headers[$cut - 1]
+      # Do not split a surrogate pair at the cap.
+      if ($last -ge 0xD800 -and $last -le 0xDBFF) { $cut = $cut - 1 }
+      $headers = $headers.Substring(0, $cut)
+      $headersTruncated = $true
+    }
+    $out['transport_headers'] = $headers
+    $out['transport_headers_truncated'] = $headersTruncated
+  }
   return $out
 }
 

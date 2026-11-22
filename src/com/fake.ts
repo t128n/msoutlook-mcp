@@ -8,7 +8,13 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ComBridge } from "./bridge.ts";
 import { ComError, connectionLost, timeoutError } from "./errors.ts";
+import {
+  DEFAULT_MAX_ATTACHMENT_BYTES,
+  DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES,
+  MAX_TRANSPORT_HEADER_CHARS,
+} from "./limits.ts";
 import type {
+  AttachmentInfo,
   BusyInterval,
   ContactDetail,
   ContactSummary,
@@ -27,6 +33,7 @@ import type {
   MailSummary,
   PingResult,
   PrepareReplyArgs,
+  ReadMailArgs,
   RuleSummary,
   SearchMailArgs,
 } from "./types.ts";
@@ -35,6 +42,8 @@ export interface FakeAttachment {
   filename: string;
   size: number;
   content?: Uint8Array;
+  content_id?: string;
+  mime_type?: string;
 }
 
 export interface FakeMail {
@@ -54,6 +63,7 @@ export interface FakeMail {
   is_read: boolean;
   importance: number;
   internet_message_id: string | null;
+  transport_headers?: string | null;
   attachments: FakeAttachment[];
   flagged?: boolean;
 }
@@ -182,6 +192,7 @@ export class FakeComBridge implements ComBridge {
       is_read: input.is_read ?? false,
       importance: input.importance ?? 1,
       internet_message_id: input.internet_message_id ?? `<${id}@example.com>`,
+      transport_headers: input.transport_headers ?? null,
       attachments: input.attachments ?? [],
       flagged: input.flagged ?? false,
     };
@@ -278,6 +289,19 @@ export class FakeComBridge implements ComBridge {
     return have === want;
   }
 
+  private afterCursor(mail: FakeMail, cursor: ListMailArgs["cursor"], ascending: boolean): boolean {
+    if (!cursor) return true;
+    const seconds = Math.floor(new Date(mail.received_at).getTime() / 1000);
+    const at = Math.floor(new Date(cursor.at).getTime() / 1000);
+    const cmp = seconds - at;
+    if (ascending) {
+      if (cmp < 0) return false;
+      return cmp > 0 || !cursor.ids.includes(mail.entry_id);
+    }
+    if (cmp > 0) return false;
+    return cmp < 0 || !cursor.ids.includes(mail.entry_id);
+  }
+
   private summary(mail: FakeMail): MailSummary {
     return {
       entry_id: mail.entry_id,
@@ -354,15 +378,16 @@ export class FakeComBridge implements ComBridge {
       .filter((m) => this.folderMatches(m.folder, args.folder))
       .filter((m) => (args.unread_only ? !m.is_read : true))
       .filter((m) => (since === undefined ? true : new Date(m.received_at).getTime() >= since))
-      .sort((a, b) =>
-        args.sort_ascending
-          ? a.received_at.localeCompare(b.received_at)
-          : b.received_at.localeCompare(a.received_at),
-      );
-    const page = matching.slice(0, args.limit);
+      .filter((m) => this.afterCursor(m, args.cursor, args.sort_ascending === true));
+    const ordered = matching.sort((a, b) =>
+      args.sort_ascending
+        ? a.received_at.localeCompare(b.received_at)
+        : b.received_at.localeCompare(a.received_at),
+    );
+    const page = ordered.slice(0, args.limit);
     return {
       items: page.map((m) => this.summary(m)),
-      truncated: matching.length > page.length,
+      truncated: ordered.length > page.length,
       folder: `\\\\${this.state.default_store}\\Inbox`,
       mailbox_used: this.state.default_store,
     };
@@ -382,6 +407,7 @@ export class FakeComBridge implements ComBridge {
         if (args.scope === "all") return subject || body || sender;
         return subject || body;
       })
+      .filter((m) => this.afterCursor(m, args.cursor, false))
       .sort((a, b) => b.received_at.localeCompare(a.received_at));
     const page = matching.slice(0, args.limit);
     return {
@@ -392,7 +418,7 @@ export class FakeComBridge implements ComBridge {
     };
   }
 
-  async readMail(args: { entryId: string; maxBodyBytes: number; includeHtml: boolean }): Promise<MailDetail> {
+  async readMail(args: ReadMailArgs): Promise<MailDetail> {
     await this.ready();
     const mail = this.locate(args.entryId);
     const encoder = new TextEncoder();
@@ -402,16 +428,55 @@ export class FakeComBridge implements ComBridge {
       body = new TextDecoder().decode(encoder.encode(body).slice(0, args.maxBodyBytes));
       bodyTruncated = true;
     }
+    const maxAttachmentBytes = args.maxAttachmentBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
+    const maxAttachmentTotalBytes = args.maxAttachmentTotalBytes ?? DEFAULT_MAX_ATTACHMENT_TOTAL_BYTES;
+    let totalBytes = 0;
+    const attachments = mail.attachments.map((a, index) => {
+      const contentId = a.content_id ?? "";
+      const info: AttachmentInfo = {
+        index: index + 1,
+        filename: a.filename,
+        size: a.size,
+        content_id: contentId,
+        mime_type: a.mime_type ?? "",
+        is_inline: contentId !== "",
+      };
+      if (args.attachmentMode !== "base64") return info;
+      const bytes = a.content;
+      if (!bytes) {
+        info.data_base64 = "";
+        info.skipped_reason = "unavailable";
+      } else if (bytes.length > maxAttachmentBytes) {
+        info.data_base64 = "";
+        info.skipped_reason = "too_large";
+      } else if (totalBytes + bytes.length > maxAttachmentTotalBytes) {
+        info.data_base64 = "";
+        info.skipped_reason = "total_cap";
+      } else {
+        info.data_base64 = Buffer.from(bytes).toString("base64");
+        totalBytes += bytes.length;
+      }
+      return info;
+    });
     const out: MailDetail = {
       ...this.summary(mail),
       body,
       body_truncated: bodyTruncated,
       recipients: this.recipientsOf(mail),
-      attachments: mail.attachments.map((a, index) => ({ index: index + 1, filename: a.filename, size: a.size })),
+      attachments,
     };
     if (args.includeHtml) {
       out.html = mail.html ?? `<p>${mail.body}</p>`;
       out.html_truncated = false;
+    }
+    if (args.includeTransportHeaders) {
+      const full = mail.transport_headers ?? "";
+      let cut = full.length > MAX_TRANSPORT_HEADER_CHARS ? MAX_TRANSPORT_HEADER_CHARS : full.length;
+      // Do not split a surrogate pair at the cap.
+      const last = full.charCodeAt(cut - 1);
+      if (cut > 0 && last >= 0xd800 && last <= 0xdbff) cut -= 1;
+      out.transport_headers = full.slice(0, cut);
+      out.transport_headers_truncated = cut < full.length;
     }
     return out;
   }

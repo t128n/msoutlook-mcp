@@ -17,6 +17,7 @@ import type {
   MailSummary,
   PingResult,
   PrepareReplyArgs,
+  ReadMailArgs,
   RuleSummary,
   SearchMailArgs,
 } from "./types.ts";
@@ -39,7 +40,7 @@ export interface ComBridge {
 
   listMail(args: ListMailArgs): Promise<ListResult<MailSummary>>;
   searchMail(args: SearchMailArgs): Promise<ListResult<MailSummary>>;
-  readMail(args: { entryId: string; maxBodyBytes: number; includeHtml: boolean }): Promise<MailDetail>;
+  readMail(args: ReadMailArgs): Promise<MailDetail>;
   downloadAttachment(args: {
     entryId: string;
     index: number;
