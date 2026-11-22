@@ -32,10 +32,11 @@ Start Outlook, sign in, and minimize it. The daemon waits for Outlook and reconn
 
 ## Tools
 
-Phase 1 is available: read mail and calendar, `health_check`, `whoami`,
-`guardrails_status`, attachments and free/busy. The guarded writes follow, then
-rules and contacts. See [docs/tools.md](docs/tools.md) for the inventory,
-arguments and differences from the original.
+Read mail and calendar, `health_check`, `whoami`, `guardrails_status`,
+attachments and free/busy are available, plus the guarded writes: drafts,
+`send_draft`, `reply_mail`, moves, flags, event drafts/invites and meeting
+responses. Rules and contacts follow. See [docs/tools.md](docs/tools.md) for the
+inventory, arguments, guardrails and differences from the original.
 
 ## Safety
 

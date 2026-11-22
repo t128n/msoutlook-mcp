@@ -629,6 +629,7 @@ export class FakeComBridge implements ComBridge {
       required: args.required_attendees.join("; "),
       optional: args.optional_attendees.join("; "),
       meeting_status: args.required_attendees.length + args.optional_attendees.length > 0 ? 1 : 0,
+      invite_sent: false,
     };
     this.state.events.set(id, event);
     return {

@@ -21,16 +21,29 @@ original unless noted. Read tools return JSON; list and search results carry
 | `find_freeslots` | `duration_minutes`, `days_ahead`, `business_hours`, `weekdays_only`, `slot_step_minutes`, `limit` | Your own calendar only. |
 | `find_freeslots_multi` | `attendees`, same slot options, `include_self` | Exchange `Recipient.FreeBusy`, plus your calendar when asked. |
 
-## Phase 2 — guarded writes (next)
+## Phase 2 — guarded writes (available now)
 
-`create_draft`, `send_draft`, `reply_mail`, `move_mail`, `mark_read`, `flag_mail`,
-`create_event_draft`, `send_event_invites`, `respond_meeting`.
+| Tool | Guardrail |
+|---|---|
+| `create_draft` | Creates a draft. To, Cc and Bcc are checked at creation. |
+| `send_draft` | Needs `confirm=true`, the send switch, and a fresh allowlist check of every To/Cc/Bcc recipient. |
+| `reply_mail` | Saves a draft by default. Direct send needs `confirm=true` and the send switch; the saved draft is kept when a check fails. |
+| `move_mail` | Needs `confirm=true`. |
+| `mark_read` | Needs `confirm=true`. |
+| `flag_mail` | Needs `confirm=true`. |
+| `create_event_draft` | Creates a draft; attendees are checked. No invite is sent. |
+| `send_event_invites` | Needs `confirm=true`, the send switch, and a fresh attendee check. |
+| `respond_meeting` | Needs `confirm=true`. `send_response=true` also needs the send switch. |
 
-Every state-changing tool either creates a **draft** or needs `confirm=true`.
-Sending needs the send switch (`config set allow-send on`) and every To, Cc and
-Bcc address is re-checked against the allowlist **at send time**.
+`from_mailbox` on `create_draft` and `reply_mail` must be listed in
+`shared_mailboxes`; `reply_mail` always saves a draft when it is set.
 
-## Phase 3 — rules and contacts
+Sending needs the send switch (`config set allow-send on`). The switch and the
+allowlist are read from disk at call time, so flipping them needs no restart.
+Every To, Cc and Bcc address is re-checked **at send time**, not only when the
+draft was created.
+
+## Phase 3 — rules and contacts (next)
 
 `list_rules`, `toggle_rule`, `create_rule`, `delete_rule`, `search_contacts`,
 `get_contact_details`. Contact search uses ADODB/LDAP inside the PowerShell
