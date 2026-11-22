@@ -1,2 +1,2 @@
 /** The version printed by `version` and reported by `/health`. */
-export const VERSION = "0.1.1";
+export const VERSION = "0.2.0";
