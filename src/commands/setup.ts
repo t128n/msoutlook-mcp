@@ -115,7 +115,7 @@ export async function runSetup(options: SetupOptions, deps: SetupDeps): Promise<
   if (options.interactive && options.allowedRecipients === undefined) {
     for (;;) {
       const answer = await deps.ask(
-        "Allowed recipients (comma separated: address, domain, *@domain, *.domain or /regex/; empty = no restriction)",
+        "Allowed recipients (comma separated: address, domain, *@domain, *.domain or /regex/; empty = no restriction; recommended: your own domain)",
         "",
       );
       allowed = splitList(answer);
@@ -157,6 +157,10 @@ export async function runSetup(options: SetupOptions, deps: SetupDeps): Promise<
       ),
       false,
     );
+  }
+
+  if (allowed.length === 0) {
+    out("  Note: no allowlist means any recipient is allowed. Recommended: your own domain.");
   }
 
   const config: AppConfig = {

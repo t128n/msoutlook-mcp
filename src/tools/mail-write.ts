@@ -124,6 +124,8 @@ export function mailWriteTools(ctx: ToolContext) {
 
         const blockedMailbox = fromMailboxAllowed(ctx.guardrails, fromMailbox);
         if (blockedMailbox) return blockedMailbox;
+        // Do not create a stray draft just because a direct send was not confirmed.
+        if (!saveOnly && !fromMailbox && args.confirm !== true) return confirmRequired("reply_mail");
 
         const draft = await ctx.bridge.prepareReply({
           entry_id: entryId,

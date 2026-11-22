@@ -798,7 +798,7 @@ function Op-CreateEventDraft($req) {
       $r = $appt.Recipients.Add($address)
       $r.Type = 2
     }
-    $appt.Recipients.ResolveAll()
+    [void]$appt.Recipients.ResolveAll()
   }
   $appt.Save()
   return [ordered]@{
@@ -950,13 +950,13 @@ function Op-CreateRule($req) {
   $from = Str-Array $req.from_addresses
   if ($from.Count -gt 0) {
     foreach ($address in $from) { [void]$rule.Conditions.From.Recipients.Add($address) }
-    $rule.Conditions.From.Recipients.ResolveAll()
+    [void]$rule.Conditions.From.Recipients.ResolveAll()
     $rule.Conditions.From.Enabled = $true
   }
   $sentTo = Str-Array $req.sent_to
   if ($sentTo.Count -gt 0) {
     foreach ($address in $sentTo) { [void]$rule.Conditions.SentTo.Recipients.Add($address) }
-    $rule.Conditions.SentTo.Recipients.ResolveAll()
+    [void]$rule.Conditions.SentTo.Recipients.ResolveAll()
     $rule.Conditions.SentTo.Enabled = $true
   }
   $subject = Str-Array $req.subject_contains
@@ -992,7 +992,7 @@ function Op-CreateRule($req) {
   $forward = Str-Array $req.forward_to
   if ($forward.Count -gt 0) {
     foreach ($address in $forward) { [void]$rule.Actions.Forward.Recipients.Add($address) }
-    $rule.Actions.Forward.Recipients.ResolveAll()
+    [void]$rule.Actions.Forward.Recipients.ResolveAll()
     $rule.Actions.Forward.Enabled = $true
   }
   if ($req.stop_processing) {

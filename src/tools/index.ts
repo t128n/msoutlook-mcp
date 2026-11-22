@@ -1,3 +1,7 @@
+/**
+ * Tool handlers ported from Astral0/outlook-com-mcp (MIT). The original
+ * server.py is the source of the tool inventory and behaviour; see NOTICE.
+ */
 import { calendarReadTools } from "./calendar-read.ts";
 import { calendarWriteTools } from "./calendar-write.ts";
 import { contactTools } from "./contacts.ts";

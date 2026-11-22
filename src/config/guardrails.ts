@@ -2,6 +2,7 @@ import { type AppConfig, loadConfig } from "./config.ts";
 import { type AllowlistResult, checkRecipients } from "./matcher.ts";
 import type { AppPaths } from "./paths.ts";
 
+/** Guardrail model ported from Astral0/outlook-com-mcp (MIT); see NOTICE. */
 export interface GuardrailsStatus {
   allow_send_direct: boolean;
   allowed_recipients: string[];
