@@ -178,8 +178,16 @@ export function mailWriteTools(ctx: ToolContext) {
         const current = recipientValues(await ctx.bridge.getRecipients({ entryId: draft.entry_id }));
         const blockedAtSend = checkRecipients(ctx.guardrails, current, true);
         if (blockedAtSend) {
-          return fail("RECIPIENTS_NOT_ALLOWED_AT_SEND", undefined, {
-            ...(blockedAtSend.data as Record<string, unknown>),
+          const detail = blockedAtSend.data as {
+            message?: string;
+            rejected?: string[];
+            allowed_recipients?: string[];
+            hint?: string;
+          };
+          return fail("RECIPIENTS_NOT_ALLOWED_AT_SEND", detail.message, {
+            rejected: detail.rejected,
+            allowed_recipients: detail.allowed_recipients,
+            hint: detail.hint,
             saved_draft_entry_id: draft.entry_id,
           });
         }

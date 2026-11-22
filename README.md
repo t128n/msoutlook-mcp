@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server for **classic Outlook on Window
 
 It is a port of [Astral0/outlook-com-mcp](https://github.com/Astral0/outlook-com-mcp) (Python, MIT). The tool inventory, the write-guardrail model and the documented Outlook gotchas follow that project. It drives the already-authenticated Outlook desktop client, so it needs no app registration and no Microsoft Graph permissions.
 
-> **Status: early implementation.** The COM bridge, CLI and daemon are in place. The tools and `new_mail` are being ported issue by issue; see the [tracking issue](https://github.com/t128n/msoutlook-mcp/issues/1).
+> **Status: v0.1 feature-complete, awaiting Windows verification.** The COM bridge, CLI/daemon, lifecycle, all 27 tools and `new_mail` are implemented. Real Outlook, Task Scheduler and OpenCode behaviour still need the manual Windows checklist; see the [tracking issue](https://github.com/t128n/msoutlook-mcp/issues/1).
 
 ## Idea
 
@@ -32,10 +32,10 @@ Start Outlook, sign in, and minimize it. The daemon waits for Outlook and reconn
 
 ## Tools
 
-Read mail and calendar, `health_check`, `whoami`, `guardrails_status`,
-attachments and free/busy are available, plus the guarded writes: drafts,
-`send_draft`, `reply_mail`, moves, flags, event drafts/invites and meeting
-responses. Rules and contacts follow. See [docs/tools.md](docs/tools.md) for the
+All 27 tools are available: read mail and calendar, `health_check`, `whoami`,
+`guardrails_status`, attachments and free/busy; the guarded writes (drafts,
+`send_draft`, `reply_mail`, moves, flags, event drafts/invites, meeting
+responses); rules; and contacts. See [docs/tools.md](docs/tools.md) for the
 inventory, arguments, guardrails and differences from the original.
 
 ## Safety
@@ -50,6 +50,7 @@ inventory, arguments, guardrails and differences from the original.
 - [docs/cli.md](docs/cli.md): commands, files, config keys, Task Scheduler, endpoints.
 - [docs/tools.md](docs/tools.md): the 27 tools, phases and argument differences.
 - [docs/events.md](docs/events.md): `new_mail`, cursors, push streams and limits.
+- [docs/smoke.md](docs/smoke.md): the manual smoke test against a real test mailbox.
 - [docs/spike-com.md](docs/spike-com.md): why the PowerShell bridge, what was verified.
 - [docs/windows-checklist.md](docs/windows-checklist.md): the manual test list for a real Windows machine.
 
@@ -60,6 +61,9 @@ bun install
 bun test
 bunx tsc --noEmit
 bun run build:windows
+
+# against a running daemon and a real test mailbox:
+bun scripts/smoke.ts
 ```
 
 `serve` runs on macOS and Linux for development; `install`, `uninstall` and `upgrade` are Windows-only. Tests use a fake COM bridge, so no Outlook is needed.

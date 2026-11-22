@@ -138,12 +138,12 @@ describe("HTTP daemon", () => {
     expect(body.result.tools).toEqual([]);
   });
 
-  test("tools/list exposes the phase 1 and 2 tools", async () => {
+  test("tools/list exposes all 27 tools", async () => {
     const { rpc } = start(true);
     const body = (await (await rpc({ jsonrpc: "2.0", id: 30, method: "tools/list" })).json()) as {
       result: { tools: { name: string; inputSchema: unknown }[] };
     };
-    expect(body.result.tools.length).toBe(21);
+    expect(body.result.tools.length).toBe(27);
     expect(body.result.tools.map((t) => t.name)).toContain("list_mail");
     expect(body.result.tools.map((t) => t.name)).toContain("send_draft");
     expect(body.result.tools[0]!.inputSchema).toBeDefined();
