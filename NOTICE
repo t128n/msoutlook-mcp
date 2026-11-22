@@ -1,0 +1,10 @@
+msoutlook-mcp
+Copyright (c) 2026 t128n
+
+This project is a TypeScript port of outlook-com-mcp, which is licensed under the MIT License.
+
+outlook-com-mcp
+Copyright (c) 2026 Astral0
+https://github.com/Astral0/outlook-com-mcp
+
+The tool inventory, the write-guardrail model and the documented Outlook gotchas follow that project. Its MIT license notice applies to the derived parts.
