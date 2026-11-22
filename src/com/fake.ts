@@ -354,7 +354,11 @@ export class FakeComBridge implements ComBridge {
       .filter((m) => this.folderMatches(m.folder, args.folder))
       .filter((m) => (args.unread_only ? !m.is_read : true))
       .filter((m) => (since === undefined ? true : new Date(m.received_at).getTime() >= since))
-      .sort((a, b) => b.received_at.localeCompare(a.received_at));
+      .sort((a, b) =>
+        args.sort_ascending
+          ? a.received_at.localeCompare(b.received_at)
+          : b.received_at.localeCompare(a.received_at),
+      );
     const page = matching.slice(0, args.limit);
     return {
       items: page.map((m) => this.summary(m)),

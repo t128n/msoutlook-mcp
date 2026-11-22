@@ -75,6 +75,8 @@ export interface ListMailArgs {
   /** Structured copies for the fake bridge and for callers that do not filter. */
   unread_only?: boolean;
   since_iso?: string | null;
+  /** Oldest first; the new_mail poller needs this to advance its cursor. */
+  sort_ascending?: boolean;
 }
 
 export interface SearchMailArgs {

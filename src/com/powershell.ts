@@ -262,6 +262,7 @@ export class PowerShellComBridge implements ComBridge {
       mailbox: args.mailbox ?? null,
       limit: args.limit,
       filter: args.filter ?? null,
+      sortAscending: args.sort_ascending === true,
     });
     return { ...result, items: array<MailSummary>(result.items) };
   }

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Logger } from "../util/logger.ts";
 import type { ToolRegistry } from "../tools/registry.ts";
+import { EventHub, EventHubError, SUB_ID, type HubMessage } from "../events/hub.ts";
 import type { HealthMonitor } from "./health.ts";
 
 export const PROTOCOL_VERSION = "2026-07-28";
@@ -14,6 +15,7 @@ export interface McpServerOptions {
   version: string;
   logger: Logger;
   tools?: ToolRegistry;
+  events?: EventHub;
   hostname?: string;
 }
 
@@ -81,6 +83,62 @@ const error = (id: JsonRpcId, code: number, message: string, data?: unknown) => 
   error: data === undefined ? { code, message } : { code, message, data },
 });
 
+function eventRpcError(id: JsonRpcId, e: unknown): ReturnType<typeof error> {
+  if (e instanceof EventHubError) {
+    switch (e.kind) {
+      case "not_found":
+        return error(id, -32023, "NotFound", { kind: "event" });
+      case "invalid_params":
+        return error(id, -32602, "InvalidParams", { reason: e.message });
+      case "resource_exhausted":
+        return error(id, -32025, "ResourceExhausted", { limit: "subscriptions" });
+    }
+  }
+  return error(id, -32603, "InternalError", { reason: e instanceof Error ? e.message : String(e) });
+}
+
+function notificationFrame(message: HubMessage, subscriptionId: string | number): Record<string, unknown> {
+  const meta = { [SUB_ID]: subscriptionId };
+  switch (message.type) {
+    case "active":
+      return {
+        jsonrpc: "2.0",
+        method: "notifications/events/active",
+        params: {
+          cursor: message.cursor,
+          truncated: message.truncated,
+          heartbeatMs: message.heartbeatMs,
+          _meta: meta,
+        },
+      };
+    case "event":
+      return {
+        jsonrpc: "2.0",
+        method: "notifications/events/event",
+        params: {
+          eventId: message.event.eventId,
+          name: message.event.name,
+          timestamp: message.event.timestamp,
+          data: message.event.data,
+          ...(message.cursor ? { cursor: message.cursor } : {}),
+          _meta: meta,
+        },
+      };
+    case "heartbeat":
+      return {
+        jsonrpc: "2.0",
+        method: "notifications/events/heartbeat",
+        params: { cursor: message.cursor, _meta: meta },
+      };
+    case "error":
+      return {
+        jsonrpc: "2.0",
+        method: "notifications/events/error",
+        params: { error: message.error, _meta: meta },
+      };
+  }
+}
+
 /**
  * Loopback-only Streamable HTTP MCP endpoint with a bearer token.
  * `/health` is unauthenticated on purpose; it says whether Outlook is reachable.
@@ -144,7 +202,12 @@ export function startMcpServer(options: McpServerOptions): McpServerHandle {
       const params = message.params ?? {};
 
       const nameHeader = req.headers.get("mcp-name");
-      if (nameHeader !== null && typeof params.name === "string" && nameHeader !== params.name) {
+      if (options.events && (method === "events/poll" || method === "events/stream")) {
+        const expected = typeof params.name === "string" ? params.name : "";
+        if (!expected || nameHeader !== expected) {
+          return json(error(id, -32020, "HeaderMismatch", { header: "Mcp-Name" }), 400);
+        }
+      } else if (method === "tools/call" && nameHeader !== null && nameHeader !== params.name) {
         return json(error(id, -32020, "HeaderMismatch", { header: "Mcp-Name" }), 400);
       }
 
@@ -155,7 +218,12 @@ export function startMcpServer(options: McpServerOptions): McpServerHandle {
           return json(
             result(id, {
               protocolVersion,
-              capabilities: { tools: { listChanged: false } },
+              capabilities: {
+                tools: { listChanged: false },
+                ...(options.events
+                  ? { extensions: { "io.modelcontextprotocol/events": {} } }
+                  : {}),
+              },
               serverInfo: { name: "msoutlook-mcp", version: options.version },
             }),
           );
@@ -164,7 +232,12 @@ export function startMcpServer(options: McpServerOptions): McpServerHandle {
           return json(
             result(id, {
               supportedVersions: SUPPORTED_VERSIONS,
-              capabilities: { tools: { listChanged: false } },
+              capabilities: {
+                tools: { listChanged: false },
+                ...(options.events
+                  ? { extensions: { "io.modelcontextprotocol/events": {} } }
+                  : {}),
+              },
               _meta: { "io.modelcontextprotocol/serverInfo": { name: "msoutlook-mcp", version: options.version } },
             }),
           );
@@ -191,6 +264,90 @@ export function startMcpServer(options: McpServerOptions): McpServerHandle {
           if (data && typeof data === "object" && !Array.isArray(data)) payload.structuredContent = data;
           if (response.isError) payload.isError = true;
           return json(result(id, payload));
+        }
+        case "events/list":
+          if (!options.events) return json(error(id, -32601, "Method not found"), 200);
+          return json(result(id, { events: options.events.list() }));
+        case "events/poll": {
+          if (!options.events) return json(error(id, -32601, "Method not found"), 200);
+          const name = typeof params.name === "string" ? params.name : "";
+          const args =
+            params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments)
+              ? (params.arguments as Record<string, unknown>)
+              : {};
+          const cursor = typeof params.cursor === "string" ? params.cursor : null;
+          const maxEvents = typeof params.maxEvents === "number" ? params.maxEvents : 50;
+          try {
+            const poll = await options.events.poll(name, args, cursor, maxEvents);
+            return json(result(id, poll as unknown as Record<string, unknown>));
+          } catch (e) {
+            return json(eventRpcError(id, e), 200);
+          }
+        }
+        case "events/stream": {
+          if (!options.events) return json(error(id, -32601, "Method not found"), 200);
+          const name = typeof params.name === "string" ? params.name : "";
+          const args =
+            params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments)
+              ? (params.arguments as Record<string, unknown>)
+              : {};
+          const cursor = typeof params.cursor === "string" ? params.cursor : null;
+          const requestedHeartbeat = typeof params.heartbeatMs === "number" ? params.heartbeatMs : undefined;
+          try {
+            const opened = await options.events.openStream(name, args, cursor, requestedHeartbeat);
+            const subscriptionId = id as string | number;
+            const encoder = new TextEncoder();
+            const body = new ReadableStream<Uint8Array>({
+              start(controller) {
+                const send = (frame: unknown) => {
+                  try {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+                  } catch {
+                    /* client gone */
+                  }
+                };
+                const reader = opened.stream.messages.getReader();
+                void (async () => {
+                  try {
+                    for (;;) {
+                      const next = await reader.read();
+                      if (next.done) break;
+                      send(notificationFrame(next.value, subscriptionId));
+                    }
+                  } catch {
+                    /* aborted */
+                  } finally {
+                    try {
+                      controller.close();
+                    } catch {
+                      /* already closed */
+                    }
+                  }
+                })();
+                req.signal.addEventListener("abort", () => {
+                  opened.stream.cancel();
+                  try {
+                    controller.close();
+                  } catch {
+                    /* already closed */
+                  }
+                });
+              },
+              cancel() {
+                opened.stream.cancel();
+              },
+            });
+            return new Response(body, {
+              headers: {
+                "content-type": "text/event-stream; charset=utf-8",
+                "cache-control": "no-cache",
+                connection: "keep-alive",
+                "x-accel-buffering": "no",
+              },
+            });
+          } catch (e) {
+            return json(eventRpcError(id, e), 200);
+          }
         }
         default:
           return json(error(id, -32601, "Method not found"), 200);
