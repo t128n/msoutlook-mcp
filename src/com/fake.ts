@@ -302,7 +302,7 @@ export class FakeComBridge implements ComBridge {
     return out;
   }
 
-  async ping(options: { launch?: boolean } = {}): Promise<PingResult> {
+  async ping(_options: { launch?: boolean; timeoutMs?: number } = {}): Promise<PingResult> {
     await this.ready();
     const inbox = [...this.state.mail.values()].filter((m) => this.folderMatches(m.folder, "inbox"));
     return {

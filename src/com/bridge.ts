@@ -30,7 +30,7 @@ import type {
  */
 export interface ComBridge {
   /** Connects through GetActiveObject. With `launch` it may start Outlook (off by default). */
-  ping(options?: { launch?: boolean }): Promise<PingResult>;
+  ping(options?: { launch?: boolean; timeoutMs?: number }): Promise<PingResult>;
 
   listFolders(args: { maxDepth: number; mailbox?: string | null }): Promise<FolderNode[]>;
 
