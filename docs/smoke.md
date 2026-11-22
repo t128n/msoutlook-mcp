@@ -18,7 +18,7 @@ bun scripts/smoke.ts --rules
 ```
 
 The token comes from `MSOUTLOOK_MCP_TOKEN` or the token file written by
-`setup`. `MSOUTLOOK_MCP_URL` defaults to `http://127.0.0.1:8787/mcp`.
+`setup`. `MSOUTLOOK_MCP_URL` defaults to `http://127.0.0.1:28471/mcp`.
 
 ## What it covers
 

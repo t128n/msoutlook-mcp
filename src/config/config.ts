@@ -22,7 +22,7 @@ export interface AppConfig {
 
 export const DEFAULT_CONFIG: AppConfig = {
   version: CONFIG_VERSION,
-  port: 8787,
+  port: 28471,
   allow_send: false,
   allowed_recipients: [],
   shared_mailboxes: [],

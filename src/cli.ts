@@ -117,7 +117,7 @@ Commands:
 Run "msoutlook-mcp <command> --help" for command options.`;
 
 export const SETUP_FLAGS: FlagSpecs = {
-  port: { type: "string", arg: "port", description: "port on 127.0.0.1 (default 8787)" },
+  port: { type: "string", arg: "port", description: "port on 127.0.0.1 (default 28471)" },
   allow: { type: "string", arg: "list", description: "allowed recipients, comma separated" },
   "allow-send": { type: "boolean", description: "allow sending (default off)" },
   "outlook-logon": { type: "boolean", description: "start Outlook minimized at log on" },

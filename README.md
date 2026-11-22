@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server for **classic Outlook on Window
 
 It is a port of [Astral0/outlook-com-mcp](https://github.com/Astral0/outlook-com-mcp) (Python, MIT). The tool inventory, the write-guardrail model and the documented Outlook gotchas follow that project. It drives the already-authenticated Outlook desktop client, so it needs no app registration and no Microsoft Graph permissions.
 
-> **Status: v0.1.0 released, awaiting Windows verification.** The COM bridge, CLI/daemon, lifecycle, all 27 tools and `new_mail` are implemented. Real Outlook, Task Scheduler and OpenCode behaviour still need the manual Windows checklist; see the [tracking issue](https://github.com/t128n/msoutlook-mcp/issues/1).
+> **Status: v0.1.1 released, awaiting Windows verification.** The COM bridge, CLI/daemon, lifecycle, all 27 tools and `new_mail` are implemented. Real Outlook, Task Scheduler and OpenCode behaviour still need the manual Windows checklist; see the [tracking issue](https://github.com/t128n/msoutlook-mcp/issues/1).
 
 ## Idea
 
@@ -27,7 +27,7 @@ It is a port of [Astral0/outlook-com-mcp](https://github.com/Astral0/outlook-com
 ### mise
 
 ```sh
-mise use -g github:t128n/msoutlook-mcp@0.1.0
+mise use -g github:t128n/msoutlook-mcp@0.1.1
 msoutlook-mcp setup
 ```
 
@@ -69,7 +69,7 @@ Paste this into OpenCode (or another coding agent) on the Windows machine:
 >    `--no-outlook-logon` per my answer. Then run `msoutlook-mcp install` and
 >    `msoutlook-mcp doctor`.
 > 4. Add a remote MCP server named `outlook` to my global OpenCode config using
->    the V2 `mcp.servers` shape: URL `http://127.0.0.1:8787/mcp`,
+>    the V2 `mcp.servers` shape: URL `http://127.0.0.1:28471/mcp`,
 >    `"oauth": false`, `"protocol": "auto"`, and the header
 >    `Authorization: Bearer <token>`. Read the token from
 >    `%LOCALAPPDATA%\msoutlook-mcp\token`. Prefer setting
@@ -90,7 +90,7 @@ The OpenCode config it should produce:
     "servers": {
       "outlook": {
         "type": "remote",
-        "url": "http://127.0.0.1:8787/mcp",
+        "url": "http://127.0.0.1:28471/mcp",
         "oauth": false,
         "headers": {
           "Authorization": "Bearer {env:MSOUTLOOK_MCP_TOKEN}"
@@ -104,7 +104,8 @@ The OpenCode config it should produce:
 
 `setup` also prints a generic `mcpServers` snippet with the token. Use the
 OpenCode shape above for OpenCode, or the printed snippet for a client that uses
-`mcpServers`.
+`mcpServers`. The default port is **28471**; `setup` picks the next free port if
+that one is in use.
 
 ## Tools
 

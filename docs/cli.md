@@ -49,7 +49,7 @@ never written into `config.json`.
 ```json
 {
   "version": 1,
-  "port": 8787,
+  "port": 28471,
   "allow_send": false,
   "allowed_recipients": ["example.com", "*@contractor.example.net"],
   "shared_mailboxes": [],
