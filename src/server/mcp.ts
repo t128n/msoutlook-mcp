@@ -244,7 +244,13 @@ export function startMcpServer(options: McpServerOptions): McpServerHandle {
         case "ping":
           return json(result(id, {}));
         case "tools/list":
-          return json(result(id, { tools: options.tools?.list() ?? [] }));
+          return json(
+            result(id, {
+              tools: options.tools?.list() ?? [],
+              ttlMs: 0,
+              cacheScope: "private",
+            }),
+          );
         case "tools/call": {
           if (!options.tools) return json(error(id, -32601, "Method not found"), 200);
           const name = typeof params.name === "string" ? params.name : "";

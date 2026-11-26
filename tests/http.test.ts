@@ -144,17 +144,21 @@ describe("HTTP daemon", () => {
   test("tools/list is empty when no registry is installed", async () => {
     const { rpc } = start();
     const body = (await (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/list" })).json()) as {
-      result: { tools: unknown[] };
+      result: { tools: unknown[]; ttlMs: number; cacheScope: string };
     };
     expect(body.result.tools).toEqual([]);
+    expect(body.result.ttlMs).toBe(0);
+    expect(body.result.cacheScope).toBe("private");
   });
 
-  test("tools/list exposes all 27 tools", async () => {
+  test("tools/list exposes all 27 tools with ttlMs and cacheScope", async () => {
     const { rpc } = start(true);
     const body = (await (await rpc({ jsonrpc: "2.0", id: 30, method: "tools/list" })).json()) as {
-      result: { tools: { name: string; inputSchema: unknown }[] };
+      result: { tools: { name: string; inputSchema: unknown }[]; ttlMs: number; cacheScope: string };
     };
     expect(body.result.tools.length).toBe(27);
+    expect(body.result.ttlMs).toBe(0);
+    expect(body.result.cacheScope).toBe("private");
     expect(body.result.tools.map((t) => t.name)).toContain("list_mail");
     expect(body.result.tools.map((t) => t.name)).toContain("send_draft");
     expect(body.result.tools[0]!.inputSchema).toBeDefined();
