@@ -122,12 +122,23 @@ describe("HTTP daemon", () => {
     expect(body.result.resultType).toBe("complete");
   });
 
+  test("initialize negotiates standard MCP protocol version 2024-11-05", async () => {
+    const { rpc } = start();
+    const response = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      result: { protocolVersion: string };
+    };
+    expect(body.result.protocolVersion).toBe("2024-11-05");
+  });
+
   test("server/discover lists the protocol", async () => {
     const { rpc } = start();
     const body = (await (await rpc({ jsonrpc: "2.0", id: 2, method: "server/discover" })).json()) as {
       result: { supportedVersions: string[] };
     };
     expect(body.result.supportedVersions).toContain(PROTOCOL_VERSION);
+    expect(body.result.supportedVersions).toContain("2024-11-05");
   });
 
   test("tools/list is empty when no registry is installed", async () => {
