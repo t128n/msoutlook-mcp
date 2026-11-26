@@ -1,4 +1,6 @@
-import { join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { ComBridge } from "./bridge.ts";
 import { ComError, asciiJson, comErrorFromAnswer, connectionLost, timeoutError } from "./errors.ts";
 import { OUTLOOK_HELPER_SCRIPT } from "./script.ts";
@@ -63,11 +65,55 @@ export interface PowerShellBridgeOptions {
 const DEFAULT_TIMEOUT = 30_000;
 const HEAVY_TIMEOUT = 120_000;
 
+/**
+ * The encoded PowerShell script exceeds Windows' command-line length limit (~8191 chars).
+ * We write the script to a file and execute it with -File instead of -EncodedCommand.
+ */
+const SCRIPT_FILE_NAME = "outlook-helper.ps1";
+
+function getScriptFilePath(): string {
+  const localAppData = process.env.LOCALAPPDATA ?? process.env.APPDATA ?? join(homedir(), ".local", "share");
+  const dir = join(localAppData, "msoutlook-mcp");
+  return join(dir, SCRIPT_FILE_NAME);
+}
+
+let scriptFileEnsured = false;
+
+function ensureScriptFile(): string {
+  if (scriptFileEnsured) {
+    const path = getScriptFilePath();
+    if (existsSync(path)) return path;
+  }
+  const path = getScriptFilePath();
+  const dir = dirname(path);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(path, OUTLOOK_HELPER_SCRIPT, { encoding: "utf8" });
+  scriptFileEnsured = true;
+  return path;
+}
+
 function powershellPath(): string {
   const root = process.env.SystemRoot ?? "C:\\Windows";
   return join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
+function fileArgs(): string[] {
+  const scriptPath = ensureScriptFile();
+  return [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Sta",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    scriptPath,
+  ];
+}
+
+/** Legacy method using -EncodedCommand; kept for reference and fallback. */
 function encodedArgs(): string[] {
   return [
     "-NoLogo",
@@ -107,8 +153,8 @@ export class PowerShellComBridge implements ComBridge {
   }
 
   private command(): string[] {
-    if (!this.options.command) return [powershellPath(), ...encodedArgs()];
-    return this.options.appendScript ? [...this.options.command, ...encodedArgs()] : [...this.options.command];
+    if (!this.options.command) return [powershellPath(), ...fileArgs()];
+    return this.options.appendScript ? [...this.options.command, ...fileArgs()] : [...this.options.command];
   }
 
   private start(): HelperProcess {
