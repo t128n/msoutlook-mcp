@@ -17,7 +17,7 @@ git push origin v0.1.0
 1. installs Bun 1.4.4,
 2. runs `bun test` and `bunx tsc --noEmit`,
 3. runs `scripts/package-release.sh`,
-4. creates a GitHub release named after the tag and uploads every asset.
+4. creates or updates the GitHub release named after the tag and uploads every asset.
 
 If `docs/release-notes/<version>.md` exists it is used as the body; otherwise
 GitHub generates notes from the merged PRs. Add notes before tagging.
