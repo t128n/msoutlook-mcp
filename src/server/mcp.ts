@@ -5,7 +5,7 @@ import { EventHub, EventHubError, SUB_ID, type HubMessage } from "../events/hub.
 import type { HealthMonitor } from "./health.ts";
 
 export const PROTOCOL_VERSION = "2026-07-28";
-export const SUPPORTED_VERSIONS = [PROTOCOL_VERSION, "2025-06-18"];
+export const SUPPORTED_VERSIONS = [PROTOCOL_VERSION, "2025-06-18", "2024-11-05", "2024-10-07"];
 const MAX_BODY_BYTES = 1024 * 1024;
 
 export interface McpServerOptions {
